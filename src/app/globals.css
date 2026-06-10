@@ -15,3 +15,13 @@ body {
   color: var(--foreground);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
+
+.superadmin-console select {
+  background-color: rgb(30 41 59);
+  color: rgb(241 245 249);
+}
+
+.superadmin-console select option {
+  background-color: rgb(30 41 59);
+  color: rgb(241 245 249);
+}

@@ -156,13 +156,13 @@ Lms.Modules.Enrollment
 Lms.Modules.LiveClasses      // Phase 1: Zoom; Phase 2/3: native stream
 Lms.Modules.Branding         // Phase 2: white-label themes + landing-page builder
 Lms.Modules.MistakeDiary     // Phase 2
-Lms.Modules.AskKitab         // Phase 2: RAG (extractable to a service later)
+Lms.Modules.SyllabusMentor   // Phase 2A: syllabus RAG (extractable to a service later)
 Lms.Modules.Payments         // Phase 3
 Lms.Modules.QnA              // Phase 3: in-app teacher Q&A
 Lms.Shared                   // tenant context, auth, common
 ```
 
-**Plug-and-play = feature flags per tenant**, not microservices or runtime plugins. A clean module boundary also lets any single module (e.g. `AskKitab`, video) be **extracted into a microservice later** without rewriting the app.
+**Plug-and-play = feature flags per tenant**, not microservices or runtime plugins. A clean module boundary also lets any single module (e.g. `SyllabusMentor`, video) be **extracted into a microservice later** without rewriting the app.
 
 ### 3.5 Module communication — hybrid model (market standard)
 
@@ -339,12 +339,13 @@ LandingPage(tenantId)
 - **API:** `GET /me/mistakes`, `POST /me/mistakes/{id}/resolve`.
 - **Frontend:** mistake review page, "re-test my mistakes".
 
-### 7.4 Ask Kitab (RAG)
-- **Entities:** `Document`, `Chunk`, `Embedding` (vectors).
-- **Vector store:** start with **SQL Server 2025 native `VECTOR` type + `VECTOR_DISTANCE`** (one DB, no extra infra); move to a dedicated vector DB (Azure AI Search / pgvector / Qdrant) only at large scale. Swappable behind the `AskKitab` module.
-- **Infra:** ingestion pipeline (chunk → embed → index); retrieval + LLM answer with citations; per-tenant content scope; AI quota.
-- **API:** `POST /ai/ask` (question → cited answer), `POST /admin/ai/ingest`.
-- **Frontend:** Ask Kitab chat panel with citations, scoped to syllabus.
+### 7.4 Syllabus Mentor (RAG Phase 2A)
+- **Module:** `Lms.Modules.SyllabusMentor` (`mentor.KnowledgeChunks`).
+- **Ingest:** topic/subject notes (HTML + PDF/text via `IContentNotesReader` + `IFileStorage`); admin `POST /admin/ai/ingest`.
+- **Retrieval:** keyword scoring over chunks (Phase 2A); optional OpenAI when `SyllabusMentor:OpenAiApiKey` is set.
+- **Guardrails:** syllabus lock (enrolled bundle); no web search; per-tenant `MentorDisplayName` branding override.
+- **API:** `POST /api/v1/ai/ask` (scope: `topicId` or `subjectId`, language `en`/`ur`).
+- **Frontend:** topic side panel + `/mentor` page with citations.
 
 ### 7.5 Advanced live classes & native streaming (Phase 2/3)
 

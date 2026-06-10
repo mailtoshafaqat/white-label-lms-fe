@@ -3,16 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Building2, Plus, Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Settings, Sparkles, Users } from "lucide-react";
+import { SuperAdminShell } from "@/components/superadmin-shell";
 import { superAdminApi, type TenantListItemDto } from "@/lib/api";
 import { getSession, isSuperAdmin } from "@/lib/auth";
 
 const statusStyle: Record<string, string> = {
-  Active: "bg-emerald-100 text-emerald-700",
-  Trial: "bg-blue-100 text-blue-700",
-  Suspended: "bg-red-100 text-red-700",
+  Active: "bg-emerald-500/20 text-emerald-300 ring-emerald-500/30",
+  Trial: "bg-blue-500/20 text-blue-300 ring-blue-500/30",
+  Suspended: "bg-red-500/20 text-red-300 ring-red-500/30",
+};
+
+const planStyle: Record<string, string> = {
+  MVP: "bg-violet-500/20 text-violet-200",
+  Pro: "bg-amber-500/20 text-amber-200",
 };
 
 export default function SuperAdminPage() {
@@ -70,110 +74,140 @@ export default function SuperAdminPage() {
     }
   }
 
+  const field =
+    "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400";
+  const selectField =
+    "w-full rounded-lg border border-white/15 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400";
+  const label = "mb-1.5 block text-sm font-medium text-slate-300";
+
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-4">
-        <div className="flex items-center gap-2 font-bold text-slate-900">
-          <Building2 className="h-6 w-6" />
-          <span>Platform · SuperAdmin</span>
-        </div>
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-800">
-          Dashboard
-        </Link>
-      </header>
-
-      <main className="mx-auto max-w-4xl px-6 py-8">
-        <h1 className="text-2xl font-bold text-slate-900">Institutes (tenants)</h1>
-        <p className="mt-1 text-slate-600">
-          Create institutes and set feature flags. Each tenant manages its own students, courses, Zoom, and payments (BYO).
+    <SuperAdminShell
+      title="Institutes"
+      subtitle="You configure tenants here. Each institute admin then runs their own branded LMS — courses, students, Zoom, and email are all tenant-managed (BYO)."
+    >
+      {error && (
+        <p className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+          {error}
         </p>
+      )}
 
-        {error && <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-base">Onboard a new institute</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 sm:grid-cols-3" onSubmit={handleCreate}>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Institute name</label>
-                <input
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="ABC Academy"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Slug</label>
-                <input
-                  required
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                  placeholder="abc-academy"
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Plan</label>
-                <select
-                  value={plan}
-                  onChange={(e) => setPlan(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="MVP">MVP</option>
-                  <option value="Pro">Pro</option>
-                </select>
-              </div>
-              <div className="sm:col-span-3">
-                <Button type="submit" disabled={submitting}>
-                  <Plus className="h-4 w-4" /> {submitting ? "Creating…" : "Create institute"}
-                </Button>
-                <p className="mt-2 text-xs text-slate-500">
-                  Defaults: BYO Zoom, BYO payments, admin-managed students (no self-enroll).
-                </p>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <h2 className="mt-8 text-lg font-semibold text-slate-900">All institutes</h2>
-        <div className="mt-3 space-y-2">
-          {loading ? (
-            <p className="text-slate-500">Loading…</p>
-          ) : tenants.length === 0 ? (
-            <p className="text-slate-500">No institutes yet.</p>
-          ) : (
-            tenants.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4"
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur lg:col-span-1">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
+            <Plus className="h-5 w-5 text-indigo-400" /> Onboard institute
+          </h2>
+          <form className="mt-5 space-y-4" onSubmit={handleCreate}>
+            <div>
+              <label className={label}>Institute name</label>
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="ABC Academy"
+                className={field}
+              />
+            </div>
+            <div>
+              <label className={label}>Slug (login URL)</label>
+              <input
+                required
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                placeholder="abc-academy"
+                className={field}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Login: /login?tenant={slug || "slug"}
+              </p>
+            </div>
+            <div>
+              <label className={label}>Plan</label>
+              <select
+                value={plan}
+                onChange={(e) => setPlan(e.target.value)}
+                className={selectField}
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-900">{t.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${statusStyle[t.status] ?? "bg-slate-100"}`}>
-                      {t.status}
-                    </span>
-                    <span className="text-xs text-slate-400">{t.plan}</span>
-                  </div>
-                  <p className="text-sm text-slate-500">
-                    {t.slug} · created {new Date(t.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <Link
-                  href={`/superadmin/tenants/${t.id}`}
-                  className="flex items-center gap-1 text-sm text-[var(--brand)] hover:underline"
-                >
-                  <Settings className="h-4 w-4" /> Manage
-                </Link>
-              </div>
-            ))
-          )}
+                <option value="MVP">MVP — core LMS</option>
+                <option value="Pro">Pro — premium (reserved)</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Label for billing/ops. MVP = full current feature set. Pro reserved for future analytics & platform payments.
+              </p>
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-400 disabled:opacity-60"
+            >
+              {submitting ? "Creating…" : "Create institute"}
+            </button>
+          </form>
         </div>
-      </main>
-    </div>
+
+        <div className="lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">All institutes ({tenants.length})</h2>
+          </div>
+          {loading ? (
+            <p className="text-slate-400">Loading…</p>
+          ) : tenants.length === 0 ? (
+            <p className="text-slate-400">No institutes yet. Create one to get started.</p>
+          ) : (
+            <div className="space-y-3">
+              {tenants.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur transition hover:border-indigo-400/40 hover:bg-white/[0.07]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-semibold text-white">{t.name}</span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${statusStyle[t.status] ?? "bg-slate-500/20 text-slate-300"}`}
+                      >
+                        {t.status}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${planStyle[t.plan] ?? "bg-slate-500/20 text-slate-300"}`}
+                      >
+                        {t.plan}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-400">
+                      <span className="font-mono text-indigo-300">{t.slug}</span> · created{" "}
+                      {new Date(t.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/superadmin/tenants/${t.id}`}
+                    className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
+                  >
+                    <Settings className="h-4 w-4" /> Configure
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <Sparkles className="h-5 w-5 text-indigo-400" />
+              <p className="mt-2 text-sm font-medium text-white">You configure</p>
+              <p className="mt-1 text-xs text-slate-400">Tenant flags, branding defaults, institute admins</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <Users className="h-5 w-5 text-indigo-400" />
+              <p className="mt-2 text-sm font-medium text-white">They operate</p>
+              <p className="mt-1 text-xs text-slate-400">Institute admin runs CMS, students, Zoom, email</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <Settings className="h-5 w-5 text-indigo-400" />
+              <p className="mt-2 text-sm font-medium text-white">Per-tenant</p>
+              <p className="mt-1 text-xs text-slate-400">Each institute has isolated data and branding</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </SuperAdminShell>
   );
 }

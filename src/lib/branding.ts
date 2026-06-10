@@ -9,7 +9,16 @@ export type BrandingDto = {
   faviconUrl: string | null;
   primaryColor: string;
   supportEmail: string | null;
+  mentorDisplayName: string;
+  syllabusMentorEnabled: boolean;
+  bundlePriceEditEnabled: boolean;
+  mcqBulkImportEnabled: boolean;
 };
+
+export function mentorLabel(b: BrandingDto | null): string {
+  if (!b) return "Syllabus Mentor";
+  return b.mentorDisplayName || `${b.displayName} Mentor`;
+}
 
 const DEFAULT_SLUG = "demo";
 
@@ -22,9 +31,11 @@ export function setTenantSlug(slug: string) {
   persistTenantSlug(slug);
 }
 
+import { applyThemeVars, normalizeHex } from "@/lib/theme";
+
 export function applyBranding(b: BrandingDto) {
   if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty("--brand", b.primaryColor);
+  applyThemeVars(normalizeHex(b.primaryColor));
 
   const faviconHref = resolveAssetUrl(b.faviconUrl);
   if (faviconHref) {
@@ -48,8 +59,50 @@ export async function fetchBranding(slug: string): Promise<BrandingDto | null> {
   }
 }
 
-export async function loadAndApplyBranding(slug?: string): Promise<BrandingDto | null> {
+export type BrandingFormInput = {
+  displayName: string;
+  logoUrl: string;
+  faviconUrl: string;
+  primaryColor: string;
+  supportEmail: string;
+  mentorDisplayName: string;
+};
+
+export function brandingFromForm(
+  form: BrandingFormInput,
+  saved: BrandingDto | null,
+  slug?: string,
+): BrandingDto {
+  const s = slug ?? saved?.slug ?? getTenantSlug();
+  return {
+    slug: s,
+    displayName: form.displayName.trim() || saved?.displayName || "Your Academy",
+    logoUrl: form.logoUrl || null,
+    faviconUrl: form.faviconUrl || null,
+    primaryColor: form.primaryColor,
+    supportEmail: form.supportEmail || null,
+    mentorDisplayName: form.mentorDisplayName || "",
+    syllabusMentorEnabled: saved?.syllabusMentorEnabled ?? true,
+    bundlePriceEditEnabled: saved?.bundlePriceEditEnabled ?? true,
+    mcqBulkImportEnabled: saved?.mcqBulkImportEnabled ?? true,
+  };
+}
+
+export async function loadAndApplyBranding(
+  slug?: string,
+  options?: { useDraftPreview?: boolean },
+): Promise<BrandingDto | null> {
   const s = slug ?? getTenantSlug();
+
+  if (options?.useDraftPreview && typeof window !== "undefined") {
+    const { loadBrandingPreview } = await import("@/lib/preview-session");
+    const draft = loadBrandingPreview(s);
+    if (draft) {
+      applyBranding(draft);
+      return draft;
+    }
+  }
+
   const b = await fetchBranding(s);
   if (b) applyBranding(b);
   return b;

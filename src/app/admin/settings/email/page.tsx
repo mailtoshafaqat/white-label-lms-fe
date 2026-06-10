@@ -6,6 +6,7 @@ import { Save, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
+import { AdminSettingsNav } from "@/components/admin-settings-nav";
 import { adminApi, type EmailSettingsDto } from "@/lib/api";
 import { getSession, canManageInstitute } from "@/lib/auth";
 
@@ -88,6 +89,7 @@ export default function EmailSettingsPage() {
     <div className="min-h-screen">
       <AdminNav />
       <main className="mx-auto max-w-2xl px-6 py-8">
+        <AdminSettingsNav />
         <h1 className="text-2xl font-bold text-slate-900">Email settings</h1>
         <p className="mt-1 text-slate-600">
           Configure the SMTP account this institute sends from (welcome emails, credentials). Each

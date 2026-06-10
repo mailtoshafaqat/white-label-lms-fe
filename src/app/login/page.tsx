@@ -6,14 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrandHeader } from "@/components/brand-header";
+import { PasswordField } from "@/components/password-field";
 import { authApi } from "@/lib/api";
-import { saveSession } from "@/lib/auth";
+import { saveSession, getPostLoginPath } from "@/lib/auth";
 import { loadAndApplyBranding, setTenantSlug, type BrandingDto } from "@/lib/branding";
+import { isBrandingPreview } from "@/lib/preview-session";
+import { PreviewModeBanner } from "@/components/preview-mode-banner";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const tenant = params.get("tenant") ?? "demo";
+  const brandingPreview = isBrandingPreview(params);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,8 +27,8 @@ function LoginForm() {
 
   useEffect(() => {
     setTenantSlug(tenant);
-    loadAndApplyBranding(tenant).then(setBranding);
-  }, [tenant]);
+    loadAndApplyBranding(tenant, { useDraftPreview: brandingPreview }).then(setBranding);
+  }, [tenant, brandingPreview]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +38,7 @@ function LoginForm() {
       const session = await authApi.login({ email, password });
       if (session.tenant?.slug) setTenantSlug(session.tenant.slug);
       saveSession(session);
-      router.push(session.mustChangePassword ? "/account/password" : "/dashboard");
+      router.push(getPostLoginPath(session));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -43,7 +47,11 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <>
+      {brandingPreview && (
+        <PreviewModeBanner branding editorHref="/admin/settings/branding" />
+      )}
+      <main className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <BrandHeader branding={branding} />
@@ -64,7 +72,7 @@ function LoginForm() {
             </div>
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <label className="text-sm font-medium text-slate-700">Password</label>
+                <span className="text-sm font-medium text-slate-700">Password</span>
                 <Link
                   href={`/forgot-password?tenant=${tenant}`}
                   className="text-xs text-[var(--brand)] hover:underline"
@@ -72,13 +80,12 @@ function LoginForm() {
                   Forgot password?
                 </Link>
               </div>
-              <input
-                type="password"
-                required
+              <PasswordField
+                label=""
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
                 placeholder="••••••••"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+                autoComplete="current-password"
               />
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
@@ -89,9 +96,16 @@ function LoginForm() {
           <p className="mt-4 text-center text-sm text-slate-600">
             Accounts are created by your institute. Contact your administrator for access.
           </p>
+          <p className="mt-2 text-center text-xs text-slate-400">
+            Platform operator?{" "}
+            <Link href="/login/platform" className="text-[var(--brand)] hover:underline">
+              SuperAdmin login
+            </Link>
+          </p>
         </CardContent>
       </Card>
-    </main>
+      </main>
+    </>
   );
 }
 

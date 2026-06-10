@@ -1,20 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, Video, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
+import { LiveClassActions } from "@/components/live-class-actions";
+import { LiveClassAttendancePanel } from "@/components/live-class-attendance";
+import { AdminListToolbar } from "@/components/admin-list-toolbar";
+import { AdminPagination } from "@/components/admin-pagination";
+import { usePagedList } from "@/hooks/use-paged-list";
 import {
   coursesApi,
   adminApi,
-  type BundleDto,
   type AdminLiveClassDto,
+  type AssignedSubjectDto,
+  type TeacherListItemDto,
   type TopicDto,
 } from "@/lib/api";
-import { getSession, isAdmin } from "@/lib/auth";
+import { getSession, isAdmin, canManageInstitute } from "@/lib/auth";
 
 const stateStyles: Record<string, string> = {
   Live: "bg-red-100 text-red-700",
@@ -23,15 +29,14 @@ const stateStyles: Record<string, string> = {
   Cancelled: "bg-slate-100 text-slate-400 line-through",
 };
 
-async function loadBundleTopics(bundleId: string): Promise<TopicDto[]> {
-  const bundle = await coursesApi.bundle(bundleId);
+type StateFilter = "all" | "upcoming" | "live" | "ended" | "cancelled";
+
+async function loadSubjectTopics(subjectId: string): Promise<TopicDto[]> {
+  const units = await coursesApi.units(subjectId);
   const topics: TopicDto[] = [];
-  for (const subject of bundle.subjects) {
-    const units = await coursesApi.units(subject.id);
-    for (const unit of units) {
-      const unitTopics = await coursesApi.topics(unit.id);
-      topics.push(...unitTopics);
-    }
+  for (const unit of units) {
+    const unitTopics = await coursesApi.topics(unit.id);
+    topics.push(...unitTopics);
   }
   return topics;
 }
@@ -52,14 +57,14 @@ function RecordingForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadBundleTopics(liveClass.bundleId)
+    loadSubjectTopics(liveClass.subjectId)
       .then((t) => {
         setTopics(t);
         setTopicId((prev) => prev || (t.length > 0 ? t[0].id : ""));
       })
       .catch(() => setError("Could not load topics for this course"))
       .finally(() => setLoadingTopics(false));
-  }, [liveClass.bundleId]);
+  }, [liveClass.subjectId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -128,21 +133,36 @@ function RecordingForm({
   );
 }
 
-export default function AdminLiveClassesPage() {
+function AdminLiveClassesContent() {
   const router = useRouter();
-  const [classes, setClasses] = useState<AdminLiveClassDto[]>([]);
-  const [bundles, setBundles] = useState<BundleDto[]>([]);
+  const [subjects, setSubjects] = useState<AssignedSubjectDto[]>([]);
+  const [teachers, setTeachers] = useState<TeacherListItemDto[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const [isInstitute, setIsInstitute] = useState(false);
+  const [myUserId, setMyUserId] = useState("");
   const [zoomConfigured, setZoomConfigured] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
 
-  const [bundleId, setBundleId] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [hostUserId, setHostUserId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [start, setStart] = useState("");
   const [duration, setDuration] = useState(60);
   const [manualJoinUrl, setManualJoinUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const list = usePagedList({
+    fetch: (params) =>
+      adminApi.listLiveClasses({
+        ...params,
+        state: stateFilter === "all" ? undefined : stateFilter,
+      }),
+    syncUrl: true,
+    extraParams: stateFilter === "all" ? {} : { state: stateFilter },
+  });
 
   useEffect(() => {
     const session = getSession();
@@ -154,46 +174,88 @@ export default function AdminLiveClassesPage() {
       router.replace("/dashboard");
       return;
     }
-    Promise.all([adminApi.listLiveClasses(), coursesApi.bundles(), adminApi.zoomStatus()])
-      .then(([c, b, z]) => {
-        setClasses(c);
-        setBundles(b);
+    const institute = canManageInstitute(session);
+    setIsInstitute(institute);
+    setMyUserId(session.userId);
+    if (!institute) setHostUserId(session.userId);
+
+    const loads: Promise<unknown>[] = [adminApi.mySubjects(), adminApi.zoomStatus()];
+    if (institute) {
+      loads.push(adminApi.listTeachers({ pageSize: 100 }), adminApi.listSubjectTeachers());
+    }
+
+    Promise.all(loads)
+      .then((results) => {
+        const [subs, z, t, maps] = results as [
+          AssignedSubjectDto[],
+          { configured: boolean },
+          { data: TeacherListItemDto[] }?,
+          { userId: string; subjectIds: string[] }[]?,
+        ];
+        setSubjects(subs);
         setZoomConfigured(z.configured);
-        if (b.length > 0) setBundleId(b[0].id);
+        if (subs.length > 0) setSubjectId(subs[0].subjectId);
+        if (institute && t && maps) {
+          setTeachers(t.data);
+          const map: Record<string, string[]> = {};
+          for (const row of maps) map[row.userId] = row.subjectIds;
+          setAssignments(map);
+          if (subs.length > 0) {
+            const firstHost = t.data.find((teacher) =>
+              (map[teacher.userId] ?? []).includes(subs[0].subjectId)
+            );
+            if (firstHost) setHostUserId(firstHost.userId);
+          }
+        }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
+      .catch((e) => setFormError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setMetaLoading(false));
   }, [router]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setFormError(null);
     setSubmitting(true);
     try {
-      const created = await adminApi.createLiveClass({
-        bundleId,
+      await adminApi.createLiveClass({
+        subjectId,
+        hostUserId: isInstitute ? hostUserId : myUserId,
         title,
         description: description || null,
         scheduledStartUtc: new Date(start).toISOString(),
         durationMinutes: duration,
         manualJoinUrl: manualJoinUrl || null,
       });
-      setClasses((prev) => [created, ...prev]);
       setTitle("");
       setDescription("");
       setStart("");
       setManualJoinUrl("");
+      await list.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not schedule class");
+      setFormError(err instanceof Error ? err.message : "Could not schedule class");
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function cancel(id: string) {
+  async function cancel(id: string, title: string) {
+    if (
+      !window.confirm(
+        `Cancel "${title}"? Students will no longer see this class on their dashboard.`
+      )
+    ) {
+      return;
+    }
     await adminApi.cancelLiveClass(id);
-    setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, state: "Cancelled" } : c)));
+    await list.reload();
   }
+
+  const emptyMessage =
+    list.debouncedSearch.trim().length > 0
+      ? "No classes match your search."
+      : stateFilter === "all"
+        ? "No classes scheduled yet."
+        : `No ${stateFilter} classes.`;
 
   return (
     <div className="min-h-screen">
@@ -203,7 +265,7 @@ export default function AdminLiveClassesPage() {
           <Video className="h-6 w-6 text-[var(--brand)]" /> Live classes
         </h1>
         <p className="mt-1 text-slate-600">
-          Schedule live sessions for a course. Enrolled students see them on their dashboard.
+          Schedule live sessions per subject and host teacher. Zoom meetings are created when Zoom is connected.
         </p>
 
         <div
@@ -224,7 +286,12 @@ export default function AdminLiveClassesPage() {
           )}
         </div>
 
-        {error && <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {formError && (
+          <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{formError}</p>
+        )}
+        {list.error && (
+          <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{list.error}</p>
+        )}
 
         <Card className="mt-6">
           <CardHeader>
@@ -233,20 +300,47 @@ export default function AdminLiveClassesPage() {
           <CardContent>
             <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Course</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Subject</label>
                 <select
-                  value={bundleId}
-                  onChange={(e) => setBundleId(e.target.value)}
+                  value={subjectId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSubjectId(id);
+                    if (isInstitute) {
+                      const host = teachers.find((t) => (assignments[t.userId] ?? []).includes(id));
+                      if (host) setHostUserId(host.userId);
+                    }
+                  }}
                   required
+                  disabled={metaLoading}
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
                 >
-                  {bundles.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.title}
+                  {subjects.map((s) => (
+                    <option key={s.subjectId} value={s.subjectId}>
+                      {s.bundleTitle} — {s.subjectTitle}
                     </option>
                   ))}
                 </select>
               </div>
+              {isInstitute && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Host teacher</label>
+                  <select
+                    value={hostUserId}
+                    onChange={(e) => setHostUserId(e.target.value)}
+                    required
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+                  >
+                    {teachers
+                      .filter((t) => (assignments[t.userId] ?? []).includes(subjectId))
+                      .map((t) => (
+                        <option key={t.userId} value={t.userId}>
+                          {t.fullName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
                 <input
@@ -303,7 +397,7 @@ export default function AdminLiveClassesPage() {
                 </div>
               )}
               <div className="sm:col-span-2">
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" disabled={submitting || metaLoading}>
                   <Plus className="h-4 w-4" /> {submitting ? "Scheduling…" : "Schedule class"}
                 </Button>
               </div>
@@ -312,17 +406,44 @@ export default function AdminLiveClassesPage() {
         </Card>
 
         <h2 className="mt-8 text-lg font-semibold text-slate-900">Scheduled classes</h2>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["all", "upcoming", "live", "ended", "cancelled"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStateFilter(s)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize ${
+                stateFilter === s
+                  ? "bg-slate-800 text-white"
+                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3">
+          <AdminListToolbar
+            search={list.searchInput}
+            onSearchChange={list.setSearchInput}
+            pageSize={list.pageSize}
+            onPageSizeChange={list.setPageSize}
+            page={list.page}
+            total={list.total}
+            searchPlaceholder="Search by title…"
+          />
+        </div>
+
         <div className="mt-3 space-y-2">
-          {loading ? (
+          {list.loading ? (
             <p className="text-slate-500">Loading…</p>
-          ) : classes.length === 0 ? (
-            <p className="text-slate-500">No classes scheduled yet.</p>
+          ) : list.data.length === 0 ? (
+            <p className="text-slate-500">{emptyMessage}</p>
           ) : (
-            classes.map((c) => (
-              <div
-                key={c.id}
-                className="rounded-lg border border-slate-200 bg-white p-3"
-              >
+            list.data.map((c) => (
+              <div key={c.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -333,38 +454,54 @@ export default function AdminLiveClassesPage() {
                       <span className="text-xs text-slate-400">{c.provider}</span>
                     </div>
                     <div className="text-sm text-slate-500">
-                      {c.bundleTitle} · {new Date(c.scheduledStartUtc).toLocaleString()} · {c.durationMinutes} min
+                      {c.bundleTitle} · {c.subjectTitle} · {c.hostName} ·{" "}
+                      {new Date(c.scheduledStartUtc).toLocaleString()} · {c.durationMinutes} min
                     </div>
                   </div>
-                  {c.startUrl && c.state !== "Cancelled" && (
-                    <a
-                      href={c.startUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-sm text-[var(--brand)] hover:underline"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> Start
-                    </a>
-                  )}
+                  <LiveClassActions
+                    state={c.state}
+                    startUrl={c.startUrl}
+                    joinUrl={c.joinUrl}
+                  />
                   {c.state !== "Cancelled" && (
-                    <button onClick={() => cancel(c.id)} className="text-slate-300 hover:text-red-600">
+                    <button
+                      type="button"
+                      onClick={() => cancel(c.id, c.title)}
+                      className="text-slate-300 hover:text-red-600"
+                      title="Cancel class"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
                 </div>
+                {(c.state === "Live" || c.state === "Ended") && (
+                  <LiveClassAttendancePanel liveClassId={c.id} state={c.state} />
+                )}
                 {c.state === "Ended" && (
-                  <RecordingForm
-                    liveClass={c}
-                    onSaved={(updated) =>
-                      setClasses((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-                    }
-                  />
+                  <RecordingForm liveClass={c} onSaved={() => void list.reload()} />
                 )}
               </div>
             ))
           )}
         </div>
+
+        <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <AdminPagination
+            page={list.page}
+            pageSize={list.pageSize}
+            total={list.total}
+            onPageChange={list.setPage}
+          />
+        </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminLiveClassesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen p-8 text-slate-500">Loading…</div>}>
+      <AdminLiveClassesContent />
+    </Suspense>
   );
 }

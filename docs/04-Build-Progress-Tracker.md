@@ -36,19 +36,22 @@
 | 11 | **Landing-page builder** (Hero/Features/Footer sections, admin editor, public render) | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
 | 12 | **Quiz & flashcard builders** (edit, reorder, titles) | ✅ | ✅ | ✅ | ✅ | ⬜ | 🟡 |
 | 13 | **Mistake diary** (auto-track wrong MCQs, resolve, re-test list) | ✅ | ✅ | ✅ | ✅ | ⬜ | 🟡 |
-| 14 | **Ask Kitab (RAG)** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⏸️ |
+| 14 | **Syllabus Mentor (RAG Phase 2A)** | ✅ | ✅ | ✅ | ✅ | ⬜ | 🟡 |
+| 14b | **Subject teachers** (provision, multi-subject assign, scoped CMS + live classes) | ✅ | ✅ | ✅ | ✅ | ⬜ | 🟡 |
 | 15 | **Live class recordings** (Zoom recording → members-only lecture) | ✅ | ✅ | ✅ | ✅ | ⬜ | 🟡 |
 
 ---
 
-## Phase 3 — Beat PIS
+## Phase 3 — Beat PIS (post-MVP web product first)
+
+**Deferred until web product is mature:** Module 18 (mobile apps), Module 19 (payments) — build after core web LMS is stable.
 
 | # | Module | Design | API contract | Backend | Frontend | Tested | Status |
 |---|--------|:------:|:------------:|:-------:|:--------:|:------:|:------:|
-| 16 | **In-app teacher Q&A** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| 16 | **In-app teacher Q&A** | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
 | 17 | **Full mock exams** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 18 | **Mobile apps** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| 19 | **Payments + parent portal** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| 18 | **Mobile apps** ⏸️ post-MVP | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⏸️ |
+| 19 | **Payments + parent portal** ⏸️ later | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⏸️ |
 | 20 | **Institute analytics** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 
 ---
@@ -77,4 +80,9 @@
 | 2026-06-08 | Auth | **Forgot/reset password** (market-standard, all roles): `identity.PasswordResetTokens` (single-use, 1hr expiry), `POST /auth/forgot-password` (always `{ sent: true }` — no email enumeration), `POST /auth/reset-password`, tenant-scoped reset email via `IEmailSender.SendForTenantAsync` + dev-outbox. Frontend: `/forgot-password`, `/reset-password`, login link + `?tenant=` slug. E2E verified (outbox email, reset, login) |
 | 2026-06-08 | Branding | Module 10 (MVP branding): `TenantSettings` fields (`DisplayName`, `LogoUrl`, `PrimaryColor`, `SupportEmail`). Public `GET /public/branding/{slug}` (no auth), institute admin `GET/PUT /admin/settings/branding`, SuperAdmin `GET/PUT /superadmin/tenants/{id}/branding`. Frontend: `lib/branding.ts` applies `--brand` CSS var, `BrandHeader` on login/dashboard, `/admin/settings/branding`, SuperAdmin tenant detail branding section. Demo seeded as "Demo Academy" `#0b3d91`. E2E verified |
 | 2026-06-08 | Phase 2 polish | White-label finish: `CustomDomain` on tenants (SuperAdmin), `FaviconUrl` + branded email templates (`IBrandedEmailRenderer`), landing sections Testimonials/CoursesShowcase/Stats + admin add/remove. Module 12: quiz/flashcard update+reorder APIs + topic editor. Module 13: `progress.MistakeEntries`, `GET /me/mistakes`, `/mistakes` UI. Module 15: `RecordingUrl` on live class → members-only lecture (`MembersOnly` on `Lecture`). Module 14 (RAG) deferred |
+| 2026-06-09 | Syllabus Mentor | Module 14 Phase 2A: `Lms.Modules.SyllabusMentor` (`mentor.KnowledgeChunks`), ingest from notes (HTML + PDF/text files), keyword retrieval + optional OpenAI, `POST /api/v1/ai/ask`, `POST /api/v1/admin/ai/ingest`, syllabus lock via enrollment, `MentorDisplayName` branding override. Frontend: `/mentor`, topic side panel, EN/UR, admin index button |
+| 2026-06-09 | Subject teachers | Module 14b: `courses.SubjectTeachers`, teacher CRUD, multi-subject assignment, live class subject+host (mandatory), teacher-scoped CMS. SuperAdmin `syllabusMentorEnabled` flag |
+| 2026-06-09 | Phase 2 polish | Auto-ingest notes on save/delete (`NoteContentChangedEvent`), Urdu ask fallback when keywords miss English notes, SuperAdmin mentor toggle |
+| 2026-06-09 | Ask Teacher | Module 16: `Lms.Modules.QnA` (`qna.DoubtThreads`, `qna.DoubtMessages`), subject-routed doubt threads with enrollment gate, teacher inbox scoped by `ISubjectAccessService`, shared `IEnrolledSubjectsReader`. Student APIs `/me/doubts/*`, teacher/admin `/admin/doubts/*`. Frontend: `/doubts`, `/admin/doubts`, dashboard + topic Ask Teacher link, admin nav Doubts tab |
+| 2026-06-09 | E2E QA | Full validation: `scripts/e2e-seed-testdata.ps1`, `scripts/e2e-run-api-tests.ps1`, `05-E2E-Test-Report.md`, `06-User-Manual-Owners-Support.md`. Fixed BUG-001 admin enrollment (`ProvisionEnrollmentAsync` + `POST /admin/students/{id}/enroll`) |
 | 2026-06-08 | Phase 2 | **Landing-page builder** (Module 11): `platform.LandingPages` + `PageSections` (Hero/Features/Footer, JSON content). Public `GET /public/landing/{slug}`, admin `GET/PUT /admin/settings/landing`. Frontend section registry on `/`, admin editor `/admin/settings/landing`. Demo seeded with hero + 3 feature cards + footer. **Subdomain resolution**: `ITenantResolver` + `TenantResolutionMiddleware` (`demo.localhost` → tenant), `TenantContext` uses JWT → subdomain → default; Next.js `middleware.ts` sets `lms.tenantSlug` cookie; CORS allows `*.localhost:3000`. **Logo upload**: `POST /admin/files?folder=branding` (image-only, 2 MB), admin branding UI file picker + preview, `resolveAssetUrl` for API paths. E2E verified (public landing API, builds clean) |

@@ -10,6 +10,8 @@ export type TenantFeatures = {
   paymentMode: string;
   allowStudentSelfEnroll: boolean;
   allowAdminCreateStudent: boolean;
+  bundlePriceEditEnabled: boolean;
+  mcqBulkImportEnabled: boolean;
 };
 
 export type AuthSession = {
@@ -44,17 +46,69 @@ export function clearSession() {
   }
 }
 
+/** Auth endpoints where 401 means bad credentials, not an expired session. */
+export function isAuthApiPath(path: string): boolean {
+  const normalized = path.split("?")[0];
+  return (
+    normalized.startsWith("/api/v1/auth/") || normalized.startsWith("/api/v1/public/")
+  );
+}
+
+/** Clear session and send user to institute login (expired/invalid token). */
+export function redirectToLogin() {
+  if (typeof window === "undefined") return;
+
+  const session = getSession();
+  const isPlatform = session?.role === "SuperAdmin";
+
+  clearSession();
+
+  const loginUrl = isPlatform
+    ? "/login/platform"
+    : `/login?tenant=${encodeURIComponent(
+        session?.tenant?.slug ??
+          localStorage.getItem("lms.tenantSlug") ??
+          "demo"
+      )}`;
+  const onLogin =
+    window.location.pathname === "/login" ||
+    window.location.pathname.startsWith("/login/");
+
+  if (!onLogin) {
+    window.location.replace(loginUrl);
+  }
+}
+
 const ADMIN_ROLES = ["SuperAdmin", "InstituteAdmin", "Teacher"];
 
 export function isAdmin(session: AuthSession | null): boolean {
   return !!session && ADMIN_ROLES.includes(session.role);
 }
 
-const MANAGE_ROLES = ["SuperAdmin", "InstituteAdmin"];
-
-/** Tenant administrators who can manage students and platform settings. */
+/** Institute owners/admins — not platform SuperAdmin (they use /superadmin). */
 export function canManageInstitute(session: AuthSession | null): boolean {
-  return !!session && MANAGE_ROLES.includes(session.role);
+  return session?.role === "InstituteAdmin";
+}
+
+export function isTeacherRole(session: AuthSession | null): boolean {
+  return session?.role === "Teacher";
+}
+
+export const INSTITUTE_SETUP_WIZARD_KEY = "lms.institute_setup_wizard_v1";
+
+export function isInstituteAdmin(session: AuthSession | null): boolean {
+  return session?.role === "InstituteAdmin";
+}
+
+export function isSetupWizardComplete(): boolean {
+  if (typeof window === "undefined") return true;
+  return localStorage.getItem(INSTITUTE_SETUP_WIZARD_KEY) === "complete";
+}
+
+export function markSetupWizardComplete() {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(INSTITUTE_SETUP_WIZARD_KEY, "complete");
+  }
 }
 
 export function isSuperAdmin(session: AuthSession | null): boolean {
@@ -63,4 +117,17 @@ export function isSuperAdmin(session: AuthSession | null): boolean {
 
 export function canSelfEnroll(session: AuthSession | null): boolean {
   return !!session?.tenant?.allowStudentSelfEnroll;
+}
+
+/** Where to send the user immediately after a successful login or forced password change. */
+export function getPostLoginPath(session: AuthSession): string {
+  if (session.mustChangePassword) return "/account/password";
+  if (isSuperAdmin(session)) return "/superadmin";
+  if (isInstituteAdmin(session)) {
+    if (typeof window !== "undefined" && !isSetupWizardComplete()) return "/admin/setup";
+    return "/admin";
+  }
+  if (isTeacherRole(session)) return "/admin/home";
+  if (isAdmin(session)) return "/admin";
+  return "/dashboard";
 }

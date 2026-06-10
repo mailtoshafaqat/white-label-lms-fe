@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { PlayCircle, Trophy, Video, BookOpen, Layers, CheckCircle2, BookX } from "lucide-react";
+import { PlayCircle, Trophy, Video, BookOpen, Layers, CheckCircle2, BookX, Brain, MessageCircleQuestion, Medal } from "lucide-react";
 import { BrandHeader } from "@/components/brand-header";
 import { loadAndApplyBranding, getTenantSlug, type BrandingDto } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,29 @@ import {
 } from "@/lib/api";
 import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll } from "@/lib/auth";
 
+type LeaderboardSize = 5 | 10;
+
+const LEADERBOARD_SIZE_KEY = "leaderboardTake";
+
+function readLeaderboardSize(): LeaderboardSize {
+  if (typeof window === "undefined") return 10;
+  return localStorage.getItem(LEADERBOARD_SIZE_KEY) === "5" ? 5 : 10;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function rankBadgeClass(rank: number): string {
+  if (rank === 1) return "bg-amber-100 text-amber-800 ring-amber-200";
+  if (rank === 2) return "bg-slate-200 text-slate-700 ring-slate-300";
+  if (rank === 3) return "bg-orange-100 text-orange-800 ring-orange-200";
+  return "bg-slate-50 text-slate-600 ring-slate-200";
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -32,6 +55,8 @@ export default function DashboardPage() {
   const [topics, setTopics] = useState<TopicDto[]>([]);
   const [grades, setGrades] = useState<GradeDto[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRowDto[]>([]);
+  const [leaderboardTake, setLeaderboardTake] = useState<LeaderboardSize>(() => readLeaderboardSize());
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
   const [liveClasses, setLiveClasses] = useState<LiveClassDto[]>([]);
   const [enrolling, setEnrolling] = useState<string | null>(null);
@@ -43,6 +68,14 @@ export default function DashboardPage() {
     const session = getSession();
     if (!session) {
       router.replace("/login");
+      return;
+    }
+    if (isSuperAdmin(session)) {
+      router.replace("/superadmin");
+      return;
+    }
+    if (isAdmin(session)) {
+      router.replace("/admin");
       return;
     }
     setName(session.fullName);
@@ -57,21 +90,36 @@ export default function DashboardPage() {
       coursesApi.bundles(),
       coursesApi.recentTopics(3),
       progressApi.myGrades(),
-      progressApi.leaderboard(10),
       enrollmentApi.myEnrollments(),
       liveClassesApi.mine(),
     ])
-      .then(([b, t, g, l, e, lc]) => {
+      .then(([b, t, g, e, lc]) => {
         setBundles(b);
         setTopics(t);
         setGrades(g);
-        setLeaderboard(l);
         setEnrollments(e);
         setLiveClasses(lc);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    const session = getSession();
+    if (!session || isSuperAdmin(session) || isAdmin(session)) return;
+
+    setLeaderboardLoading(true);
+    progressApi
+      .leaderboard(leaderboardTake)
+      .then(setLeaderboard)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load leaderboard"))
+      .finally(() => setLeaderboardLoading(false));
+  }, [leaderboardTake]);
+
+  function setLeaderboardSize(size: LeaderboardSize) {
+    setLeaderboardTake(size);
+    localStorage.setItem(LEADERBOARD_SIZE_KEY, String(size));
+  }
 
   async function enroll(bundleId: string) {
     setEnrolling(bundleId);
@@ -107,6 +155,9 @@ export default function DashboardPage() {
               Admin
             </Link>
           )}
+          <Link href="/account/password" className="text-slate-500 hover:text-slate-800">
+            Change password
+          </Link>
           <button onClick={logout} className="text-slate-500 hover:text-slate-800">
             Log out
           </button>
@@ -118,7 +169,12 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-slate-600">Continue where you left off.</p>
+        <p className="mt-1 text-slate-600">
+          Continue where you left off.{" "}
+          <Link href="/mock-exams" className="font-medium text-[var(--brand)] hover:underline">
+            Mock exams
+          </Link>
+        </p>
 
         {error && (
           <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
@@ -170,14 +226,30 @@ export default function DashboardPage() {
         </section>
 
         <section className="mt-8">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-900">Continue learning</h2>
-            <Link
-              href="/mistakes"
-              className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-            >
-              <BookX className="h-4 w-4" /> Mistake diary
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              {branding?.syllabusMentorEnabled !== false && (
+                <Link
+                  href="/mentor"
+                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+                >
+                  <Brain className="h-4 w-4" /> Syllabus Mentor
+                </Link>
+              )}
+              <Link
+                href="/doubts"
+                className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+              >
+                <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
+              </Link>
+              <Link
+                href="/mistakes"
+                className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+              >
+                <BookX className="h-4 w-4" /> Mistake diary
+              </Link>
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             {topics.map((t) => (
@@ -238,28 +310,82 @@ export default function DashboardPage() {
           </Card>
 
           <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-amber-500" /> Leaderboard
-              </CardTitle>
+            <CardHeader className="space-y-3 pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-amber-500" /> Leaderboard
+                </CardTitle>
+                <div
+                  className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs"
+                  role="group"
+                  aria-label="Leaderboard size"
+                >
+                  {([5, 10] as const).map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => setLeaderboardSize(size)}
+                      className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+                        leaderboardTake === size
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      Top {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                Best score per quiz, summed — top {leaderboardTake} in your institute
+              </p>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {leaderboard.length === 0 ? (
+            <CardContent>
+              {leaderboardLoading ? (
+                <p className="text-sm text-slate-500">Loading rankings…</p>
+              ) : leaderboard.length === 0 ? (
                 <p className="text-sm text-slate-500">No scores yet — be the first on the board.</p>
               ) : (
-                leaderboard.map((l) => (
-                  <div
-                    key={l.userId}
-                    className={`flex items-center justify-between rounded-md px-2 py-1.5 text-sm ${
-                      l.isMe ? "bg-blue-50 font-semibold" : ""
-                    }`}
-                  >
-                    <span className="text-slate-700">
-                      #{l.rank} {l.isMe ? "You" : l.name}
-                    </span>
-                    <span className="text-slate-500">{l.points.toLocaleString()} pts</span>
-                  </div>
-                ))
+                <ol className="space-y-1.5">
+                  {leaderboard.map((l) => (
+                    <li
+                      key={l.userId}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                        l.isMe
+                          ? "border-[var(--brand)]/30 bg-[var(--brand)]/5 ring-1 ring-[var(--brand)]/20"
+                          : "border-slate-100 bg-white"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ${rankBadgeClass(l.rank)}`}
+                        aria-hidden
+                      >
+                        {l.rank <= 3 ? (
+                          <Medal className={`h-4 w-4 ${l.rank === 1 ? "text-amber-600" : l.rank === 2 ? "text-slate-600" : "text-orange-600"}`} />
+                        ) : (
+                          l.rank
+                        )}
+                      </span>
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          l.isMe ? "bg-[var(--brand)] text-white" : "bg-slate-100 text-slate-600"
+                        }`}
+                        aria-hidden
+                      >
+                        {initials(l.isMe ? name || l.name : l.name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={`truncate text-sm ${l.isMe ? "font-semibold text-slate-900" : "font-medium text-slate-800"}`}>
+                          {l.isMe ? "You" : l.name}
+                        </p>
+                        <p className="text-xs text-slate-500">Rank #{l.rank}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                        {l.points.toLocaleString()} pts
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               )}
             </CardContent>
           </Card>
@@ -285,15 +411,24 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      {c.bundleTitle} · {new Date(c.scheduledStartUtc).toLocaleString()}
+                      {c.subjectTitle} · {c.hostName} · {new Date(c.scheduledStartUtc).toLocaleString()}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {c.state !== "Ended" && c.state !== "Cancelled" && (
-                        <a href={c.joinUrl} target="_blank" rel="noopener noreferrer">
-                          <Button size="sm" variant={c.state === "Live" ? "default" : "outline"}>
-                            {c.state === "Live" ? "Join now" : "Join"}
-                          </Button>
-                        </a>
+                        <Button
+                          size="sm"
+                          variant={c.state === "Live" ? "default" : "outline"}
+                          onClick={async () => {
+                            try {
+                              const res = await liveClassesApi.recordJoin(c.id);
+                              window.open(res.joinUrl, "_blank", "noopener,noreferrer");
+                            } catch {
+                              window.open(c.joinUrl, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                        >
+                          {c.state === "Live" ? "Join now" : "Join"}
+                        </Button>
                       )}
                       {c.recordingUrl && (
                         <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer">

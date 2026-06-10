@@ -242,7 +242,7 @@ Practical build order: **match the video first (MVP)** → **white-label + diffe
 |-------|------|-------|
 | **Phase 0** | Sign-off | Client sign-off on this document |
 | **Phase 1 — MVP (match the video)** | Feature parity | Dashboard + course hierarchy; video lectures + notes; MCQ engine (DPT + results + explanations); flashcards; My Grades + basic leaderboard; bundle enrollment; admin CMS for content; **live classes (Zoom)** |
-| **Phase 2 — White-label + differentiation** | Stand out | Multi-tenant branding; quiz/flashcard builders; mistake diary; Ask Kitab (RAG); advanced live classes (native stream + recordings) |
+| **Phase 2 — White-label + differentiation** | Stand out | Multi-tenant branding; quiz/flashcard builders; mistake diary; **Syllabus Mentor** (syllabus RAG, no open web); advanced live classes (native stream + recordings) |
 | **Phase 3 — Beat PIS** | Win | In-app teacher Q&A (no WhatsApp); full mock exams; mobile apps; payments + parent portal; institute analytics |
 
 *Exact timeline and cost in SOW after client marks priorities.*
@@ -293,7 +293,7 @@ Practical build order: **match the video first (MVP)** → **white-label + diffe
 - [ ] One institute fully branded (multi-tenant, isolated data)  
 - [ ] Teacher uses quiz/flashcard builders to publish content  
 - [ ] Mistake diary captures wrong answers for review  
-- [ ] Student asks Ask Kitab (RAG); cited answer scoped to syllabus returned  
+- [ ] Student asks Syllabus Mentor; cited answer scoped to syllabus returned (no open web)  
 - [ ] Advanced live class (native stream) + recording replay works  
 
 ---
