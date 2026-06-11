@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Mail, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { adminApi, type StudentGuardianDto, type StudentListItemDto } from "@/lib/api";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export function StudentGuardiansPanel({
   student,
@@ -18,6 +19,7 @@ export function StudentGuardiansPanel({
   const [weekly, setWeekly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   function reload() {
     return adminApi.listGuardians(student.userId).then(setGuardians);
@@ -93,10 +95,17 @@ export function StudentGuardiansPanel({
                     <button
                       type="button"
                       className="text-slate-300 hover:text-red-600"
-                      onClick={async () => {
-                        await adminApi.deleteGuardian(student.userId, g.id);
-                        await reload();
-                      }}
+                      onClick={() =>
+                        confirm({
+                          title: "Remove guardian?",
+                          description: `Remove ${g.name} (${g.email}) from this student?`,
+                          confirmLabel: "Remove",
+                          onConfirm: async () => {
+                            await adminApi.deleteGuardian(student.userId, g.id);
+                            await reload();
+                          },
+                        })
+                      }
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -132,6 +141,7 @@ export function StudentGuardiansPanel({
           </form>
         </>
       )}
+      {confirmDialog}
     </div>
   );
 }

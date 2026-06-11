@@ -8,12 +8,13 @@ import { BrandHeader } from "@/components/brand-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { loadAndApplyBranding, type BrandingDto } from "@/lib/branding";
-import { mockExamsApi, type MockExamSummaryDto } from "@/lib/api";
+import { enrollmentApi, mockExamsApi, type EnrollmentDto, type MockExamSummaryDto } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 
 export default function MockExamsPage() {
   const router = useRouter();
   const [exams, setExams] = useState<MockExamSummaryDto[]>([]);
+  const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
   const [branding, setBranding] = useState<BrandingDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +27,11 @@ export default function MockExamsPage() {
     }
     const slug = session.tenant?.slug ?? "demo";
     loadAndApplyBranding(slug).then(setBranding);
-    mockExamsApi
-      .list()
-      .then(setExams)
+    Promise.all([mockExamsApi.list(), enrollmentApi.myEnrollments()])
+      .then(([examList, enrollmentList]) => {
+        setExams(examList);
+        setEnrollments(enrollmentList.filter((e) => e.isActive));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [router]);
@@ -46,6 +49,20 @@ export default function MockExamsPage() {
         <p className="mt-1 text-slate-600">Timed multi-topic practice exams.</p>
 
         {error && <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {!loading && enrollments.length > 0 && (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            {enrollments.map((e) => (
+              <p key={e.bundleId}>
+                <strong>{e.bundleTitle}</strong> — access until{" "}
+                {new Date(e.expiresAt).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
+            ))}
+          </div>
+        )}
         {loading ? (
           <p className="mt-8 text-slate-500">Loading…</p>
         ) : exams.length === 0 ? (
@@ -61,6 +78,17 @@ export default function MockExamsPage() {
                   <p className="text-sm text-slate-600">
                     {exam.subjectTitle} · {exam.totalQuestions} questions · {exam.timeLimitMinutes}{" "}
                     min · {exam.availabilityStatus}
+                    {exam.accessExpiresAtUtc && (
+                      <>
+                        {" "}
+                        · Access until{" "}
+                        {new Date(exam.accessExpiresAtUtc).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </>
+                    )}
                   </p>
                   <Button size="sm" asChild disabled={exam.availabilityStatus !== "Open"}>
                     <Link href={`/mock-exams/${exam.id}`}>

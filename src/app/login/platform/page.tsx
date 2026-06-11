@@ -22,8 +22,8 @@ export default function PlatformLoginPage() {
     setLoading(true);
     try {
       const session = await authApi.login({ email, password });
-      if (session.role !== "SuperAdmin") {
-        setError("This login is for platform operators only. Use your institute login page.");
+      if (session.role !== "SuperAdmin" && session.role !== "Support") {
+        setError("This login is for platform staff only. Use your institute login page.");
         return;
       }
       saveSession(session);
@@ -45,7 +45,7 @@ export default function PlatformLoginPage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-indigo-200">Platform Console</p>
-              <p className="text-xs text-slate-400">SuperAdmin · SaaS operator</p>
+              <p className="text-xs text-slate-400">SuperAdmin / Support</p>
             </div>
           </div>
           <CardTitle className="text-white">Sign in to manage institutes</CardTitle>

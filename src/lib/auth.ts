@@ -59,7 +59,7 @@ export function redirectToLogin() {
   if (typeof window === "undefined") return;
 
   const session = getSession();
-  const isPlatform = session?.role === "SuperAdmin";
+  const isPlatform = session?.role === "SuperAdmin" || session?.role === "Support";
 
   clearSession();
 
@@ -115,6 +115,32 @@ export function isSuperAdmin(session: AuthSession | null): boolean {
   return session?.role === "SuperAdmin";
 }
 
+/** Human-readable role for UI labels, e.g. InstituteAdmin → "Institute Admin". */
+export function formatRoleLabel(role: string | undefined | null): string {
+  switch (role) {
+    case "InstituteAdmin":
+      return "Institute Admin";
+    case "SuperAdmin":
+      return "SuperAdmin";
+    case "Teacher":
+      return "Teacher";
+    case "Student":
+      return "Student";
+    case "Support":
+      return "Support";
+    default:
+      return role?.trim() || "";
+  }
+}
+
+export function isSupport(session: AuthSession | null): boolean {
+  return session?.role === "Support";
+}
+
+export function isPlatformStaff(session: AuthSession | null): boolean {
+  return isSuperAdmin(session) || isSupport(session);
+}
+
 export function canSelfEnroll(session: AuthSession | null): boolean {
   return !!session?.tenant?.allowStudentSelfEnroll;
 }
@@ -122,6 +148,7 @@ export function canSelfEnroll(session: AuthSession | null): boolean {
 /** Where to send the user immediately after a successful login or forced password change. */
 export function getPostLoginPath(session: AuthSession): string {
   if (session.mustChangePassword) return "/account/password";
+  if (isSupport(session)) return "/support";
   if (isSuperAdmin(session)) return "/superadmin";
   if (isInstituteAdmin(session)) {
     if (typeof window !== "undefined" && !isSetupWizardComplete()) return "/admin/setup";

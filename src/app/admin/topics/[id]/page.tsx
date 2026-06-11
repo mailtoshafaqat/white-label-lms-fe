@@ -30,18 +30,21 @@ import {
   type AdminQuestionDto,
   type FlashcardDto,
   type QuizAnalyticsDto,
+  type QuestionDifficulty,
   type ResultVisibilityMode,
   type McqImportPreviewDto,
   type McqImportRowInput,
 } from "@/lib/api";
-import { downloadMcqTemplate, parseMcqCsv } from "@/lib/mcq-csv";
-import { getSession, isAdmin } from "@/lib/auth";
+import { downloadMcqTemplate, parseMcqCsv, previewMcqRows } from "@/lib/mcq-csv";
+import { getSession, isAdmin, canManageInstitute } from "@/lib/auth";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 type QuestionForm = {
   stem: string;
   options: string[];
   correctKey: string;
   explanation: string;
+  difficulty: QuestionDifficulty;
   isPyq: boolean;
   pyqYear: string;
   pyqExam: string;
@@ -82,6 +85,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
   const [cards, setCards] = useState<FlashcardDto[]>([]);
   const [quizTitle, setQuizTitle] = useState("");
   const [timeLimitMinutes, setTimeLimitMinutes] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState<QuestionDifficulty | "">("");
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableUntil, setAvailableUntil] = useState("");
   const [resultVisibility, setResultVisibility] = useState<ResultVisibilityMode>("Immediate");
@@ -108,6 +112,12 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
   const [importPreview, setImportPreview] = useState<McqImportPreviewDto | null>(null);
   const [importRows, setImportRows] = useState<McqImportRowInput[]>([]);
   const [importBusy, setImportBusy] = useState(false);
+  const [topicTitle, setTopicTitle] = useState("");
+  const [editingTopicTitle, setEditingTopicTitle] = useState(false);
+  const [topicTitleInput, setTopicTitleInput] = useState("");
+  const [savingTopicTitle, setSavingTopicTitle] = useState(false);
+  const [canRenameStructure, setCanRenameStructure] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const [lec, setLec] = useState({ title: "", url: "" });
   const [note, setNote] = useState({ title: "", contentHtml: "" });
@@ -116,6 +126,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
     options: ["", "", "", ""],
     correctKey: "0",
     explanation: "",
+    difficulty: "Medium",
     isPyq: false,
     pyqYear: "",
     pyqExam: "",
@@ -130,21 +141,46 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
     if (!session) return router.replace("/login");
     if (!isAdmin(session)) return router.replace("/dashboard");
 
-    Promise.all([
+    setMcqBulkImport(session.tenant?.mcqBulkImportEnabled ?? true);
+    setCanRenameStructure(canManageInstitute(session));
+
+    Promise.allSettled([
+      adminApi.getTopic(topicId),
       adminApi.topicContent(topicId),
       adminApi.quiz(topicId),
       adminApi.deck(topicId),
-      adminApi.getBranding().catch(() => null),
-    ])
-      .then(([content, quiz, deck, branding]) => {
-        if (branding) setMcqBulkImport(branding.mcqBulkImportEnabled);
-        setLectures(content.lectures);
-        setNotes(content.notes);
+    ]).then((results) => {
+      const errors: string[] = [];
+      const [topicR, contentR, quizR, deckR] = results;
+
+      if (topicR.status === "fulfilled") {
+        setTopicTitle(topicR.value.title);
+        setTopicTitleInput(topicR.value.title);
+      } else {
+        errors.push(
+          topicR.reason instanceof Error ? `Topic: ${topicR.reason.message}` : "Topic: failed to load"
+        );
+      }
+
+      if (contentR.status === "fulfilled") {
+        setLectures(contentR.value.lectures);
+        setNotes(contentR.value.notes);
+      } else {
+        errors.push(
+          contentR.reason instanceof Error
+            ? `Content: ${contentR.reason.message}`
+            : "Content: failed to load"
+        );
+      }
+
+      if (quizR.status === "fulfilled") {
+        const quiz = quizR.value;
         setQuestions(quiz?.questions ?? []);
         setQuizTitle(quiz?.title ?? "Quiz");
         setTimeLimitMinutes(
           quiz?.timeLimitMinutes != null ? String(quiz.timeLimitMinutes) : ""
         );
+        setDifficultyFilter(quiz?.difficultyFilter ?? "");
         setAvailableFrom(toDatetimeLocal(quiz?.availableFromUtc ?? null));
         setAvailableUntil(toDatetimeLocal(quiz?.availableUntilUtc ?? null));
         setResultVisibility(quiz?.resultVisibility ?? "Immediate");
@@ -152,15 +188,35 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
         setNotifyBatchComplete(quiz?.notifyTeachersOnBatchComplete ?? false);
         setBatchThreshold(String(quiz?.batchCompleteThresholdPercent ?? 80));
         setResultsPublishedAtUtc(quiz?.resultsPublishedAtUtc ?? null);
-        setCards(deck?.cards ?? []);
-        setDeckTitle(deck?.title ?? "Flashcards");
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
+      } else {
+        errors.push(
+          quizR.reason instanceof Error ? `Quiz: ${quizR.reason.message}` : "Quiz: failed to load"
+        );
+      }
+
+      if (deckR.status === "fulfilled") {
+        setCards(deckR.value?.cards ?? []);
+        setDeckTitle(deckR.value?.title ?? "Flashcards");
+      } else {
+        errors.push(
+          deckR.reason instanceof Error ? `Flashcards: ${deckR.reason.message}` : "Flashcards: failed to load"
+        );
+      }
+
+      if (errors.length > 0) setError(errors.join(" · "));
+    }).finally(() => setLoading(false));
   }, [topicId, router]);
 
   function fail(e: unknown) {
     setError(e instanceof Error ? e.message : "Action failed");
+  }
+
+  function patchImportRow(rowIndex: number, patch: Partial<McqImportRowInput>) {
+    setImportRows((prev) => {
+      const next = prev.map((r, i) => (i === rowIndex ? { ...r, ...patch } : r));
+      setImportPreview(previewMcqRows(next));
+      return next;
+    });
   }
 
   function startEditQuestion(qq: AdminQuestionDto) {
@@ -170,6 +226,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
       options: [...qq.options],
       correctKey: qq.correctKey,
       explanation: qq.explanation ?? "",
+      difficulty: qq.difficulty,
       isPyq: qq.isPyq,
       pyqYear: qq.pyqYear != null ? String(qq.pyqYear) : "",
       pyqExam: qq.pyqExam ?? "",
@@ -222,6 +279,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
         showExplanations,
         notifyTeachersOnBatchComplete: notifyBatchComplete,
         batchCompleteThresholdPercent: Number(batchThreshold) || 80,
+        difficultyFilter: difficultyFilter || null,
       });
       setError(null);
       setScheduleMsg("Schedule and result settings saved.");
@@ -307,7 +365,67 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
         <Link href="/admin" className="text-slate-500 hover:text-slate-800">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <span className="font-semibold text-slate-900">Edit topic content</span>
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500">Topic</p>
+          {canRenameStructure && editingTopicTitle ? (
+            <div className="mt-0.5 flex items-center gap-2">
+              <input
+                value={topicTitleInput}
+                onChange={(e) => setTopicTitleInput(e.target.value)}
+                className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm font-semibold"
+                autoFocus
+              />
+              <button
+                type="button"
+                className="text-emerald-600"
+                disabled={savingTopicTitle}
+                onClick={async () => {
+                  const next = topicTitleInput.trim();
+                  if (!next) return;
+                  setSavingTopicTitle(true);
+                  try {
+                    const updated = await adminApi.updateTopic(topicId, { title: next });
+                    setTopicTitle(updated.title);
+                    setTopicTitleInput(updated.title);
+                    setEditingTopicTitle(false);
+                    setError(null);
+                  } catch (e) {
+                    fail(e);
+                  } finally {
+                    setSavingTopicTitle(false);
+                  }
+                }}
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTopicTitleInput(topicTitle);
+                  setEditingTopicTitle(false);
+                }}
+              >
+                <X className="h-4 w-4 text-slate-400" />
+              </button>
+            </div>
+          ) : canRenameStructure ? (
+            <button
+              type="button"
+              className="group flex max-w-md items-center gap-2 text-left"
+              onClick={() => setEditingTopicTitle(true)}
+              title="Rename topic"
+            >
+              <span className="truncate font-semibold text-slate-900">
+                {topicTitle || "Edit topic content"}
+              </span>
+              <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-400 opacity-0 group-hover:opacity-100" />
+            </button>
+          ) : (
+            <span className="block truncate font-semibold text-slate-900">
+              {topicTitle || "Edit topic content"}
+            </span>
+          )}
+        </div>
         <Button
           type="button"
           size="sm"
@@ -339,14 +457,21 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                 <span className="truncate text-xs text-slate-400">{l.url}</span>
                 <button
                   className="ml-auto text-slate-300 hover:text-red-600"
-                  onClick={async () => {
-                    try {
-                      await adminApi.deleteLecture(l.id);
-                      setLectures((p) => p.filter((x) => x.id !== l.id));
-                    } catch (e) {
-                      fail(e);
-                    }
-                  }}
+                  onClick={() =>
+                    confirm({
+                      title: "Delete lecture?",
+                      description: `Remove "${l.title}"? This cannot be undone.`,
+                      confirmLabel: "Delete",
+                      onConfirm: async () => {
+                        try {
+                          await adminApi.deleteLecture(l.id);
+                          setLectures((p) => p.filter((x) => x.id !== l.id));
+                        } catch (e) {
+                          fail(e);
+                        }
+                      },
+                    })
+                  }
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -401,14 +526,21 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                 <span className="text-slate-700">{n.title}</span>
                 <button
                   className="ml-auto text-slate-300 hover:text-red-600"
-                  onClick={async () => {
-                    try {
-                      await adminApi.deleteNote(n.id);
-                      setNotes((p) => p.filter((x) => x.id !== n.id));
-                    } catch (e) {
-                      fail(e);
-                    }
-                  }}
+                  onClick={() =>
+                    confirm({
+                      title: "Delete note?",
+                      description: `Remove "${n.title}"? This cannot be undone.`,
+                      confirmLabel: "Delete",
+                      onConfirm: async () => {
+                        try {
+                          await adminApi.deleteNote(n.id);
+                          setNotes((p) => p.filter((x) => x.id !== n.id));
+                        } catch (e) {
+                          fail(e);
+                        }
+                      },
+                    })
+                  }
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -538,7 +670,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                         const text = await file.text();
                         const rows = parseMcqCsv(text);
                         setImportRows(rows);
-                        setImportPreview(null);
+                        setImportPreview(rows.length > 0 ? previewMcqRows(rows) : null);
                         e.target.value = "";
                       }}
                     />
@@ -570,40 +702,125 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       {importPreview.validCount} valid · {importPreview.invalidCount} with
                       errors (of {importPreview.totalRows})
                     </p>
-                    <div className="max-h-64 space-y-2 overflow-y-auto">
-                      {importPreview.rows.map((row) => (
-                        <div
-                          key={row.rowNumber}
-                          className={`rounded border p-2 text-xs ${
-                            row.isValid
-                              ? "border-emerald-200 bg-white"
-                              : "border-red-200 bg-red-50"
-                          }`}
-                        >
-                          <p className="font-medium">
-                            Row {row.rowNumber}: {row.row.stem.slice(0, 80)}
-                            {row.row.stem.length > 80 ? "…" : ""}
-                          </p>
-                          {!row.isValid && (
-                            <p className="mt-1 text-red-700">{row.errors.join(" ")}</p>
-                          )}
-                          {row.isValid && (
+                    <div className="max-h-96 space-y-3 overflow-y-auto">
+                      {importPreview.rows.map((row) => {
+                        const rowIndex = row.rowNumber - 1;
+                        const optionFields = [
+                          { key: "optionA" as const, label: "A" },
+                          { key: "optionB" as const, label: "B" },
+                          { key: "optionC" as const, label: "C" },
+                          { key: "optionD" as const, label: "D" },
+                        ];
+                        return (
+                          <div
+                            key={row.rowNumber}
+                            className={`rounded border p-3 text-xs ${
+                              row.isValid
+                                ? "border-emerald-200 bg-white"
+                                : "border-red-200 bg-red-50"
+                            }`}
+                          >
+                            <p className="font-medium text-slate-800">Row {row.rowNumber}</p>
+                            {!row.isValid && (
+                              <p className="mt-1 text-red-700">{row.errors.join(" ")}</p>
+                            )}
+                            <label className="mt-2 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              Question
+                            </label>
                             <input
-                              className="mt-1 w-full rounded border border-slate-200 px-2 py-1"
+                              className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
                               value={row.row.stem}
-                              onChange={(e) => {
-                                const stem = e.target.value;
-                                setImportRows((prev) =>
-                                  prev.map((r, i) =>
-                                    i === row.rowNumber - 1 ? { ...r, stem } : r
-                                  )
-                                );
-                                setImportPreview(null);
-                              }}
+                              onChange={(e) => patchImportRow(rowIndex, { stem: e.target.value })}
                             />
-                          )}
-                        </div>
-                      ))}
+                            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              Options
+                            </p>
+                            <div className="mt-1 space-y-1.5">
+                              {optionFields.map(({ key, label }, i) => {
+                                const isCorrect = row.correctKey === String(i);
+                                return (
+                                  <div
+                                    key={key}
+                                    className={`flex items-center gap-2 rounded px-1 py-0.5 ${
+                                      isCorrect ? "bg-emerald-50 ring-1 ring-emerald-200" : ""
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`import-correct-${row.rowNumber}`}
+                                      checked={isCorrect}
+                                      onChange={() =>
+                                        patchImportRow(rowIndex, { correct: label })
+                                      }
+                                      title="Mark correct"
+                                    />
+                                    <span className="w-4 shrink-0 font-semibold text-slate-600">
+                                      {label}.
+                                    </span>
+                                    <input
+                                      className="h-8 flex-1 rounded border border-slate-200 px-2 text-sm"
+                                      value={row.row[key]}
+                                      placeholder={`Option ${label}`}
+                                      onChange={(e) =>
+                                        patchImportRow(rowIndex, { [key]: e.target.value })
+                                      }
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <label className="mt-3 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              Explanation
+                            </label>
+                            <input
+                              className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                              value={row.row.explanation ?? ""}
+                              placeholder="Optional"
+                              onChange={(e) =>
+                                patchImportRow(rowIndex, {
+                                  explanation: e.target.value || null,
+                                })
+                              }
+                            />
+                            <label className="mt-2 flex items-center gap-2 text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={row.row.isPyq}
+                                onChange={(e) =>
+                                  patchImportRow(rowIndex, { isPyq: e.target.checked })
+                                }
+                              />
+                              PYQ (past year question)
+                            </label>
+                            {row.row.isPyq && (
+                              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <input
+                                  type="number"
+                                  className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+                                  value={row.row.pyqYear ?? ""}
+                                  placeholder="Year (e.g. 2023)"
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    patchImportRow(rowIndex, {
+                                      pyqYear: raw ? Number(raw) : null,
+                                    });
+                                  }}
+                                />
+                                <input
+                                  className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+                                  value={row.row.pyqExam ?? ""}
+                                  placeholder="Exam (e.g. ECAT)"
+                                  onChange={(e) =>
+                                    patchImportRow(rowIndex, {
+                                      pyqExam: e.target.value || null,
+                                    })
+                                  }
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <Button
                       type="button"
@@ -706,6 +923,23 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                 </div>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Difficulty filter (optional)
+                  </label>
+                  <select
+                    value={difficultyFilter}
+                    onChange={(e) =>
+                      setDifficultyFilter(e.target.value as QuestionDifficulty | "")
+                    }
+                    className={field}
+                  >
+                    <option value="">All difficulties</option>
+                    <option value="Easy">Easy only</option>
+                    <option value="Medium">Medium only</option>
+                    <option value="Hard">Hard only</option>
+                  </select>
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">
                     Result visibility
@@ -822,6 +1056,20 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       placeholder="Explanation"
                       className={field}
                     />
+                    <select
+                      value={editQ.difficulty}
+                      onChange={(e) =>
+                        setEditQ({
+                          ...editQ,
+                          difficulty: e.target.value as QuestionDifficulty,
+                        })
+                      }
+                      className={field}
+                    >
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
                     <label className="flex items-center gap-2 text-xs text-slate-600">
                       <input
                         type="checkbox"
@@ -857,6 +1105,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                               options: editQ.options.map((o) => o.trim()),
                               correctKey: editQ.correctKey,
                               explanation: editQ.explanation.trim() || null,
+                              difficulty: editQ.difficulty,
                               isPyq: editQ.isPyq,
                               pyqYear: editQ.isPyq && editQ.pyqYear ? Number(editQ.pyqYear) : null,
                               pyqExam: editQ.isPyq ? editQ.pyqExam.trim() || null : null,
@@ -882,6 +1131,9 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       {i + 1}. {qq.stem}{" "}
                       <span className="text-xs text-green-600">
                         (ans: {qq.options[Number(qq.correctKey)]})
+                      </span>
+                      <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                        {qq.difficulty}
                       </span>
                       {qq.isPyq && (
                         <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
@@ -913,14 +1165,21 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       </button>
                       <button
                         className="text-slate-300 hover:text-red-600"
-                        onClick={async () => {
-                          try {
-                            await adminApi.deleteQuestion(qq.id);
-                            setQuestions((p) => p.filter((x) => x.id !== qq.id));
-                          } catch (e) {
-                            fail(e);
-                          }
-                        }}
+                        onClick={() =>
+                          confirm({
+                            title: "Delete question?",
+                            description: "Remove this MCQ from the quiz? This cannot be undone.",
+                            confirmLabel: "Delete",
+                            onConfirm: async () => {
+                              try {
+                                await adminApi.deleteQuestion(qq.id);
+                                setQuestions((p) => p.filter((x) => x.id !== qq.id));
+                              } catch (e) {
+                                fail(e);
+                              }
+                            },
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -963,6 +1222,17 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                 placeholder="Explanation (optional)"
                 className={field}
               />
+              <select
+                value={q.difficulty}
+                onChange={(e) =>
+                  setQ({ ...q, difficulty: e.target.value as QuestionDifficulty })
+                }
+                className={field}
+              >
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
               <label className="flex items-center gap-2 text-xs text-slate-600">
                 <input
                   type="checkbox"
@@ -1001,6 +1271,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       options: q.options.map((o) => o.trim()),
                       correctKey: q.correctKey,
                       explanation: q.explanation.trim(),
+                      difficulty: q.difficulty,
                       isPyq: q.isPyq,
                       pyqYear: q.isPyq && q.pyqYear ? Number(q.pyqYear) : null,
                       pyqExam: q.isPyq ? q.pyqExam.trim() || null : null,
@@ -1121,14 +1392,21 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       </button>
                       <button
                         className="text-slate-300 hover:text-red-600"
-                        onClick={async () => {
-                          try {
-                            await adminApi.deleteCard(c.id);
-                            setCards((p) => p.filter((x) => x.id !== c.id));
-                          } catch (e) {
-                            fail(e);
-                          }
-                        }}
+                        onClick={() =>
+                          confirm({
+                            title: "Delete flashcard?",
+                            description: "Remove this flashcard? This cannot be undone.",
+                            confirmLabel: "Delete",
+                            onConfirm: async () => {
+                              try {
+                                await adminApi.deleteCard(c.id);
+                                setCards((p) => p.filter((x) => x.id !== c.id));
+                              } catch (e) {
+                                fail(e);
+                              }
+                            },
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -1172,6 +1450,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
           </CardContent>
         </Card>
       </main>
+      {confirmDialog}
     </div>
   );
 }

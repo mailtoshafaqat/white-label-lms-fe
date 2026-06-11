@@ -20,6 +20,7 @@ import {
   type EnrollmentDto,
   type LiveClassDto,
 } from "@/lib/api";
+import { canStudentJoinLiveClass, liveClassJoinHint } from "@/lib/live-class-utils";
 import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll } from "@/lib/auth";
 
 type LeaderboardSize = 5 | 10;
@@ -415,20 +416,31 @@ export default function DashboardPage() {
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {c.state !== "Ended" && c.state !== "Cancelled" && (
-                        <Button
-                          size="sm"
-                          variant={c.state === "Live" ? "default" : "outline"}
-                          onClick={async () => {
-                            try {
-                              const res = await liveClassesApi.recordJoin(c.id);
-                              window.open(res.joinUrl, "_blank", "noopener,noreferrer");
-                            } catch {
-                              window.open(c.joinUrl, "_blank", "noopener,noreferrer");
-                            }
-                          }}
-                        >
-                          {c.state === "Live" ? "Join now" : "Join"}
-                        </Button>
+                        canStudentJoinLiveClass(c.state) ? (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={async () => {
+                              try {
+                                const res = await liveClassesApi.recordJoin(c.id);
+                                window.open(res.joinUrl, "_blank", "noopener,noreferrer");
+                              } catch {
+                                window.open(c.joinUrl, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                          >
+                            Join now
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            title={liveClassJoinHint(c.state, c.scheduledStartUtc)}
+                          >
+                            Join when live
+                          </Button>
+                        )
                       )}
                       {c.recordingUrl && (
                         <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer">

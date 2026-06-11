@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2, Video } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
@@ -12,6 +12,7 @@ import { LiveClassAttendancePanel } from "@/components/live-class-attendance";
 import { AdminListToolbar } from "@/components/admin-list-toolbar";
 import { AdminPagination } from "@/components/admin-pagination";
 import { usePagedList } from "@/hooks/use-paged-list";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import {
   coursesApi,
   adminApi,
@@ -154,6 +155,8 @@ function AdminLiveClassesContent() {
   const [manualJoinUrl, setManualJoinUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
   const list = usePagedList({
     fetch: (params) =>
       adminApi.listLiveClasses({
@@ -238,16 +241,16 @@ function AdminLiveClassesContent() {
     }
   }
 
-  async function cancel(id: string, title: string) {
-    if (
-      !window.confirm(
-        `Cancel "${title}"? Students will no longer see this class on their dashboard.`
-      )
-    ) {
-      return;
-    }
-    await adminApi.cancelLiveClass(id);
-    await list.reload();
+  function requestCancel(id: string, title: string) {
+    confirm({
+      title: "Cancel live class?",
+      description: `Cancel "${title}"? Students will no longer see this class on their dashboard.`,
+      confirmLabel: "Cancel class",
+      onConfirm: async () => {
+        await adminApi.cancelLiveClass(id);
+        await list.reload();
+      },
+    });
   }
 
   const emptyMessage =
@@ -405,7 +408,19 @@ function AdminLiveClassesContent() {
           </CardContent>
         </Card>
 
-        <h2 className="mt-8 text-lg font-semibold text-slate-900">Scheduled classes</h2>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Scheduled classes</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={list.loading}
+            onClick={() => void list.reload()}
+          >
+            <RefreshCw className={`h-4 w-4 ${list.loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {(["all", "upcoming", "live", "ended", "cancelled"] as const).map((s) => (
@@ -457,16 +472,23 @@ function AdminLiveClassesContent() {
                       {c.bundleTitle} · {c.subjectTitle} · {c.hostName} ·{" "}
                       {new Date(c.scheduledStartUtc).toLocaleString()} · {c.durationMinutes} min
                     </div>
+                    {c.state === "Upcoming" && (
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        Join link activates when the class is live. Host can start up to 15 minutes
+                        early.
+                      </p>
+                    )}
                   </div>
                   <LiveClassActions
                     state={c.state}
+                    scheduledStartUtc={c.scheduledStartUtc}
                     startUrl={c.startUrl}
                     joinUrl={c.joinUrl}
                   />
                   {c.state !== "Cancelled" && (
                     <button
                       type="button"
-                      onClick={() => cancel(c.id, c.title)}
+                      onClick={() => requestCancel(c.id, c.title)}
                       className="text-slate-300 hover:text-red-600"
                       title="Cancel class"
                     >
@@ -494,6 +516,7 @@ function AdminLiveClassesContent() {
           />
         </div>
       </main>
+      {confirmDialog}
     </div>
   );
 }

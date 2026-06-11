@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { GraduationCap, KeyRound, LogOut } from "lucide-react";
-import { getSession, canManageInstitute, isAdmin, clearSession } from "@/lib/auth";
+import { getSession, canManageInstitute, isAdmin, clearSession, formatRoleLabel } from "@/lib/auth";
 import { getTenantSlug } from "@/lib/branding";
 
 const instituteTabs = [
@@ -34,6 +34,7 @@ export function AdminNav() {
   const router = useRouter();
   const [tabs, setTabs] = useState(teacherTabs);
   const [userName, setUserName] = useState("");
+  const [roleLabel, setRoleLabel] = useState("");
   const [tenantSlug, setTenantSlug] = useState("demo");
   const [homeLabel, setHomeLabel] = useState("Admin");
 
@@ -43,6 +44,7 @@ export function AdminNav() {
     const institute = canManageInstitute(session);
     setTabs(institute ? instituteTabs : teacherTabs);
     setUserName(session.fullName);
+    setRoleLabel(formatRoleLabel(session.role));
     const slug = session.tenant?.slug ?? getTenantSlug();
     setTenantSlug(slug);
     setHomeLabel(session.tenant?.tenantName ?? "Admin");
@@ -68,7 +70,10 @@ export function AdminNav() {
         </Link>
         <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
           {userName && (
-            <span className="hidden text-slate-600 sm:inline">Hi, {userName}</span>
+            <span className="hidden text-slate-600 sm:inline">
+              Hi, {userName}
+              {roleLabel ? ` (${roleLabel})` : ""}
+            </span>
           )}
           <Link
             href="/account/password"

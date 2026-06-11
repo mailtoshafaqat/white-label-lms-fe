@@ -1,4 +1,73 @@
-import type { McqImportRowInput } from "@/lib/api";
+import type { McqImportPreviewDto, McqImportRowInput } from "@/lib/api";
+
+const OPTION_FIELDS = ["optionA", "optionB", "optionC", "optionD"] as const;
+const OPTION_LETTERS = ["A", "B", "C", "D"] as const;
+
+export function resolveMcqCorrectKey(correct: string): string | null {
+  const normalized = correct.trim().toUpperCase();
+  switch (normalized) {
+    case "A":
+    case "0":
+      return "0";
+    case "B":
+    case "1":
+      return "1";
+    case "C":
+    case "2":
+      return "2";
+    case "D":
+    case "3":
+      return "3";
+    default:
+      return null;
+  }
+}
+
+/** Client-side validation mirror for editable import preview (keeps UI in sync without API round-trips). */
+export function previewMcqRows(rows: McqImportRowInput[]): McqImportPreviewDto {
+  const previewRows = rows.map((row, index) => {
+    const errors: string[] = [];
+    const stem = row.stem.trim();
+    const options = OPTION_FIELDS.map((key) => row[key].trim());
+
+    if (!stem) errors.push("Question stem is required.");
+    options.forEach((opt, i) => {
+      if (!opt) errors.push(`Option ${OPTION_LETTERS[i]} is required.`);
+    });
+
+    const correctKey = resolveMcqCorrectKey(row.correct);
+    if (!correctKey) errors.push("Correct answer must be A, B, C, D or 0–3.");
+
+    if (row.isPyq && (row.pyqYear == null || row.pyqYear < 1990 || row.pyqYear > 2100)) {
+      errors.push("PYQ rows need a valid pyq_year.");
+    }
+
+    return {
+      rowNumber: index + 1,
+      row: {
+        ...row,
+        stem,
+        optionA: options[0],
+        optionB: options[1],
+        optionC: options[2],
+        optionD: options[3],
+        explanation: row.explanation?.trim() || null,
+        pyqExam: row.pyqExam?.trim() || null,
+      },
+      isValid: errors.length === 0,
+      errors,
+      correctKey,
+    };
+  });
+
+  const validCount = previewRows.filter((r) => r.isValid).length;
+  return {
+    totalRows: rows.length,
+    validCount,
+    invalidCount: rows.length - validCount,
+    rows: previewRows,
+  };
+}
 
 export const MCQ_CSV_TEMPLATE_HEADER =
   "stem,option_a,option_b,option_c,option_d,correct,explanation,is_pyq,pyq_year,pyq_exam";

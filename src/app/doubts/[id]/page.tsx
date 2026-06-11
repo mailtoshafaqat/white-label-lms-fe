@@ -32,7 +32,7 @@ export default function DoubtThreadPage({ params }: { params: Promise<{ id: stri
 
   async function sendFollowUp(e: React.FormEvent) {
     e.preventDefault();
-    if (!reply.trim()) return;
+    if (!reply.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
     try {

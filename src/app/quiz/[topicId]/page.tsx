@@ -6,26 +6,21 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { McqAttemptView } from "@/components/assessment/mcq-attempt-view";
 import {
   assessmentsApi,
   type QuizDto,
   type AttemptResultDto,
   type QuizQuestionDto,
+  type QuestionDifficulty,
 } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { requiresStartAttempt, toggleFlagged } from "@/lib/quiz-attempt";
 
 function formatCountdown(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function requiresScheduledAttempt(quiz: QuizDto): boolean {
-  return (
-    (quiz.timeLimitMinutes ?? 0) > 0 ||
-    quiz.availableFromUtc !== null ||
-    quiz.availableUntilUtc !== null
-  );
 }
 
 export default function QuizPage({ params }: { params: Promise<{ topicId: string }> }) {
@@ -36,6 +31,8 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
   const [expiresAtUtc, setExpiresAtUtc] = useState<string | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionDto[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [flagged, setFlagged] = useState<Set<string>>(new Set());
+  const [difficulty, setDifficulty] = useState<QuestionDifficulty | "">("");
   const [result, setResult] = useState<AttemptResultDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -49,8 +46,7 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
     setRefreshingResult(true);
     setError(null);
     try {
-      const data = await assessmentsApi.attemptResult(quiz.id);
-      setResult(data);
+      setResult(await assessmentsApi.attemptResult(quiz.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not refresh results");
     } finally {
@@ -59,22 +55,28 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
   }, [quiz]);
 
   const loadQuiz = useCallback(async () => {
-    const data = await assessmentsApi.topicQuiz(topicId);
+    const data = await assessmentsApi.topicQuiz(
+      topicId,
+      difficulty || undefined
+    );
     setQuiz(data);
     if (data.activeAttempt) {
       setAttemptId(data.activeAttempt.attemptId);
       setExpiresAtUtc(data.activeAttempt.expiresAtUtc);
       setQuestions(data.questions);
-    } else if (!requiresScheduledAttempt(data)) {
+      setFlagged(new Set(data.flaggedQuestionIds));
+    } else if (!requiresStartAttempt(data)) {
       setQuestions(data.questions);
       setAttemptId(null);
       setExpiresAtUtc(null);
+      setFlagged(new Set());
     } else {
       setQuestions([]);
       setAttemptId(null);
       setExpiresAtUtc(null);
+      setFlagged(new Set());
     }
-  }, [topicId]);
+  }, [topicId, difficulty]);
 
   useEffect(() => {
     if (!getSession()) {
@@ -109,13 +111,20 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
         questionId: q.id,
         selectedKey: answers[q.id] ?? "",
       }));
-      setResult(await assessmentsApi.submit(quiz.id, payload, attemptId));
+      setResult(
+        await assessmentsApi.submit(
+          quiz.id,
+          payload,
+          attemptId,
+          Array.from(flagged)
+        )
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submit failed");
     } finally {
       setSubmitting(false);
     }
-  }, [quiz, questions, answers, attemptId]);
+  }, [quiz, questions, answers, attemptId, flagged]);
 
   useEffect(() => {
     if (secondsLeft === 0 && !result && !submitting && questions.length > 0) {
@@ -133,6 +142,7 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
       setExpiresAtUtc(started.expiresAtUtc);
       setQuestions(started.questions);
       setAnswers({});
+      setFlagged(new Set(started.flaggedQuestionIds));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start test");
     } finally {
@@ -153,7 +163,13 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
   }
 
   const inProgress = questions.length > 0 && !result;
-  const scheduled = quiz ? requiresScheduledAttempt(quiz) : false;
+  const scheduled = quiz ? requiresStartAttempt(quiz) : false;
+  const showDifficultyFilter =
+    quiz &&
+    !quiz.difficultyFilter &&
+    quiz.availableDifficulties.length > 1 &&
+    !inProgress &&
+    !result;
 
   return (
     <div className="min-h-screen">
@@ -176,71 +192,95 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
         )}
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         {loading && <p className="text-slate-500">Loading…</p>}
         {error && (
           <p className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
+        )}
+
+        {showDifficultyFilter && (
+          <Card className="mb-4 border-slate-200 bg-slate-50/80">
+            <CardContent className="flex flex-wrap items-center gap-3 pt-4 text-sm">
+              <span className="font-medium text-slate-700">Difficulty filter</span>
+              <select
+                value={difficulty}
+                onChange={(e) => {
+                  setDifficulty(e.target.value as QuestionDifficulty | "");
+                  setLoading(true);
+                  setResult(null);
+                }}
+                className="rounded-md border border-slate-200 px-2 py-1"
+              >
+                <option value="">All difficulties</option>
+                {quiz.availableDifficulties.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </CardContent>
+          </Card>
         )}
 
         {result ? (
           <div>
             {result.resultsVisible ? (
               <>
-            <Card className="mb-6">
-              <CardContent className="pt-6 text-center">
-                <p className="text-sm text-slate-500">Your score</p>
-                <p className="mt-1 text-4xl font-bold text-[var(--brand)]">
-                  {result.score}/{result.total}
-                </p>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              {result.questions.map((q, idx) => (
-                <Card key={q.questionId}>
-                  <CardHeader>
-                    <CardTitle className="flex items-start gap-2 text-sm">
-                      {q.isCorrect ? (
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                      ) : (
-                        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                      )}
-                      <span>
-                        {idx + 1}. {q.stem}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1 text-sm">
-                    {q.options.map((opt, i) => {
-                      const key = i.toString();
-                      const isCorrect = key === q.correctKey;
-                      const isSelected = key === q.selectedKey;
-                      return (
-                        <div
-                          key={i}
-                          className={`rounded-md px-3 py-1.5 ${
-                            isCorrect
-                              ? "bg-green-50 text-green-800"
-                              : isSelected
-                                ? "bg-red-50 text-red-800"
-                                : "text-slate-600"
-                          }`}
-                        >
-                          {opt}
-                          {isCorrect && " ✓"}
-                          {isSelected && !isCorrect && " (your answer)"}
-                        </div>
-                      );
-                    })}
-                    {result.showExplanations && q.explanation && (
-                      <p className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
-                        {q.explanation}
-                      </p>
-                    )}
+                <Card className="mb-6">
+                  <CardContent className="pt-6 text-center">
+                    <p className="text-sm text-slate-500">Your score</p>
+                    <p className="mt-1 text-4xl font-bold text-[var(--brand)]">
+                      {result.score}/{result.total}
+                    </p>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
+
+                <div className="space-y-4">
+                  {result.questions.map((q, idx) => (
+                    <Card key={q.questionId}>
+                      <CardHeader>
+                        <CardTitle className="flex items-start gap-2 text-sm">
+                          {q.isCorrect ? (
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                          ) : (
+                            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                          )}
+                          <span>
+                            {idx + 1}. {q.stem}
+                          </span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-1 text-sm">
+                        {q.options.map((opt, i) => {
+                          const key = i.toString();
+                          const isCorrect = key === q.correctKey;
+                          const isSelected = key === q.selectedKey;
+                          return (
+                            <div
+                              key={i}
+                              className={`rounded-md px-3 py-1.5 ${
+                                isCorrect
+                                  ? "bg-green-50 text-green-800"
+                                  : isSelected
+                                    ? "bg-red-50 text-red-800"
+                                    : "text-slate-600"
+                              }`}
+                            >
+                              {opt}
+                              {isCorrect && " ✓"}
+                              {isSelected && !isCorrect && " (your answer)"}
+                            </div>
+                          );
+                        })}
+                        {result.showExplanations && q.explanation && (
+                          <p className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
+                            {q.explanation}
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </>
             ) : (
               <Card className="mb-6">
@@ -270,6 +310,7 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
                   onClick={() => {
                     setResult(null);
                     setAnswers({});
+                    setFlagged(new Set());
                     if (scheduled) {
                       setQuestions([]);
                       setAttemptId(null);
@@ -307,6 +348,11 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
                         <strong>Closes:</strong> {new Date(quiz.availableUntilUtc).toLocaleString()}
                       </p>
                     ) : null}
+                    {quiz.difficultyFilter ? (
+                      <p>
+                        <strong>Difficulty:</strong> {quiz.difficultyFilter} only
+                      </p>
+                    ) : null}
                   </CardContent>
                 </Card>
               )}
@@ -329,49 +375,20 @@ export default function QuizPage({ params }: { params: Promise<{ topicId: string
                   </CardContent>
                 </Card>
               ) : (
-                <div>
-                  <div className="space-y-4">
-                    {questions.map((q, idx) => (
-                      <Card key={q.id}>
-                        <CardHeader>
-                          <CardTitle className="text-sm">
-                            {idx + 1}. {q.stem}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                          {q.options.map((opt, i) => {
-                            const key = i.toString();
-                            return (
-                              <label
-                                key={i}
-                                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                                  answers[q.id] === key
-                                    ? "border-[var(--brand)] bg-blue-50"
-                                    : "border-slate-200"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={q.id}
-                                  checked={answers[q.id] === key}
-                                  onChange={() => setAnswers((a) => ({ ...a, [q.id]: key }))}
-                                />
-                                {opt}
-                              </label>
-                            );
-                          })}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                  <Button
-                    className="mt-6"
-                    onClick={() => void submit()}
-                    disabled={submitting || secondsLeft === 0}
-                  >
-                    {submitting ? "Submitting…" : "Submit answers"}
-                  </Button>
-                </div>
+                <McqAttemptView
+                  questions={questions}
+                  answers={answers}
+                  onAnswer={(questionId, key) =>
+                    setAnswers((a) => ({ ...a, [questionId]: key }))
+                  }
+                  flagged={flagged}
+                  onToggleFlag={(questionId) =>
+                    setFlagged((prev) => toggleFlagged(prev, questionId))
+                  }
+                  onSubmit={() => void submit()}
+                  submitting={submitting}
+                  disabled={secondsLeft === 0}
+                />
               )}
             </div>
           )

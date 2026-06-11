@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { doubtsApi, type DoubtReplyTemplateDto } from "@/lib/api";
 import { getSession, isAdmin } from "@/lib/auth";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export default function DoubtTemplatesPage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function DoubtTemplatesPage() {
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   function reload() {
     return doubtsApi.listTemplates().then(setTemplates);
@@ -112,10 +114,17 @@ export default function DoubtTemplatesPage() {
                       <button
                         type="button"
                         className="text-slate-300 hover:text-red-600"
-                        onClick={async () => {
-                          await doubtsApi.deleteTemplate(t.id);
-                          await reload();
-                        }}
+                        onClick={() =>
+                          confirm({
+                            title: "Delete template?",
+                            description: `Remove "${t.title}"? Teachers will no longer see this canned reply.`,
+                            confirmLabel: "Delete",
+                            onConfirm: async () => {
+                              await doubtsApi.deleteTemplate(t.id);
+                              await reload();
+                            },
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -127,6 +136,7 @@ export default function DoubtTemplatesPage() {
           </CardContent>
         </Card>
       </main>
+      {confirmDialog}
     </div>
   );
 }

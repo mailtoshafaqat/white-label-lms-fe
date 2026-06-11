@@ -2,8 +2,9 @@
 
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Mail, Copy, Check, KeyRound, Ban, UserCheck, Users } from "lucide-react";
+import { Plus, Mail, Copy, Check, KeyRound, Ban, UserCheck, Users, CalendarClock } from "lucide-react";
 import { StudentGuardiansPanel } from "@/components/student-guardians-panel";
+import { StudentEnrollmentsPanel } from "@/components/student-enrollments-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
@@ -38,6 +39,7 @@ function AdminStudentsContent() {
   const [resetResult, setResetResult] = useState<ResetStudentPasswordDto | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [guardianStudent, setGuardianStudent] = useState<StudentListItemDto | null>(null);
+  const [enrollmentStudent, setEnrollmentStudent] = useState<StudentListItemDto | null>(null);
 
   const list = usePagedList({
     fetch: (params) => adminApi.listStudents(params),
@@ -316,14 +318,27 @@ function AdminStudentsContent() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            setEnrollmentStudent(null);
                             setGuardianStudent((prev) =>
                               prev?.userId === s.userId ? null : s
-                            )
-                          }
+                            );
+                          }}
                           className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
                         >
                           <Users className="h-3 w-3" /> Guardians
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuardianStudent(null);
+                            setEnrollmentStudent((prev) =>
+                              prev?.userId === s.userId ? null : s
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        >
+                          <CalendarClock className="h-3 w-3" /> Enrollments
                         </button>
                         <button
                           type="button"
@@ -360,6 +375,16 @@ function AdminStudentsContent() {
                         <StudentGuardiansPanel
                           student={s}
                           onClose={() => setGuardianStudent(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  {enrollmentStudent?.userId === s.userId && (
+                    <tr key={`${s.userId}-enrollments`}>
+                      <td colSpan={5} className="p-0">
+                        <StudentEnrollmentsPanel
+                          student={s}
+                          onClose={() => setEnrollmentStudent(null)}
                         />
                       </td>
                     </tr>

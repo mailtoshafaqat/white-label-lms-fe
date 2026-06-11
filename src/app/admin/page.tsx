@@ -14,6 +14,7 @@ import {
   Wand2,
   Check,
   Pencil,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminNav } from "@/components/admin-nav";
@@ -47,6 +48,25 @@ type ContentPath = {
   topicId: string;
   topicTitle: string;
 };
+
+function childCountLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function LevelBadge({ level }: { level: "Subject" | "Unit" | "Topic" }) {
+  const styles = {
+    Subject: "bg-indigo-50 text-indigo-700",
+    Unit: "bg-amber-50 text-amber-800",
+    Topic: "bg-emerald-50 text-emerald-700",
+  } as const;
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[level]}`}
+    >
+      {level}
+    </span>
+  );
+}
 
 function deleteCopy(kind: DeleteKind, title: string): { title: string; description: string } {
   switch (kind) {
@@ -105,6 +125,111 @@ async function buildContentIndex(
   return paths;
 }
 
+function InlineRename({
+  value,
+  onSave,
+  className = "text-sm text-slate-600",
+  editable = true,
+}: {
+  value: string;
+  onSave: (title: string) => Promise<void>;
+  className?: string;
+  editable?: boolean;
+}) {
+  if (!editable) {
+    return <span className={`truncate ${className}`}>{value}</span>;
+  }
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState(value);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setInput(value);
+  }, [value]);
+
+  async function save() {
+    const next = input.trim();
+    if (!next) {
+      setError("Title is required.");
+      return;
+    }
+    if (next === value) {
+      setEditing(false);
+      setError(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(next);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") {
+                setInput(value);
+                setEditing(false);
+                setError(null);
+              }
+            }}
+            className="h-7 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm"
+            autoFocus
+          />
+          <button
+            type="button"
+            className="text-emerald-600 disabled:opacity-50"
+            disabled={busy}
+            onClick={() => void save()}
+            title="Save title"
+          >
+            <Check className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="text-slate-400"
+            disabled={busy}
+            onClick={() => {
+              setInput(value);
+              setEditing(false);
+              setError(null);
+            }}
+            title="Cancel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {error && <p className="mt-0.5 text-[10px] text-red-600">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`group flex min-w-0 items-center gap-1 text-left hover:text-slate-900 ${className}`}
+      onClick={() => setEditing(true)}
+      title="Rename"
+    >
+      <span className="truncate">{value}</span>
+      <Pencil className="h-3 w-3 shrink-0 text-slate-400 opacity-0 group-hover:opacity-100" />
+    </button>
+  );
+}
+
 function InlineAdd({ label, onAdd }: { label: string; onAdd: (title: string) => Promise<void> }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -152,20 +277,28 @@ function QuickAddTopic({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!bundleId) {
-      setSubjects([]);
-      setSubjectId("");
-      return;
-    }
-    coursesApi
-      .bundle(bundleId)
+  function loadSubjectsForBundle(id: string) {
+    return coursesApi
+      .bundle(id)
       .then((d) =>
         setSubjects(
           d.subjects.filter((s) => !allowedSubjectIds || allowedSubjectIds.has(s.id))
         )
       )
       .catch(() => setSubjects([]));
+  }
+
+  function loadUnitsForSubject(id: string) {
+    return coursesApi.units(id).then(setUnits).catch(() => setUnits([]));
+  }
+
+  useEffect(() => {
+    if (!bundleId) {
+      setSubjects([]);
+      setSubjectId("");
+      return;
+    }
+    void loadSubjectsForBundle(bundleId);
     setSubjectId("");
     setUnitId("");
     setUnits([]);
@@ -177,12 +310,13 @@ function QuickAddTopic({
       setUnitId("");
       return;
     }
-    coursesApi
-      .units(subjectId)
-      .then(setUnits)
-      .catch(() => setUnits([]));
+    void loadUnitsForSubject(subjectId);
     setUnitId("");
   }, [subjectId]);
+
+  const bundleTitle = bundles.find((b) => b.id === bundleId)?.title;
+  const subjectTitle = subjects.find((s) => s.id === subjectId)?.title;
+  const unitTitle = units.find((u) => u.id === unitId)?.title;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -212,60 +346,107 @@ function QuickAddTopic({
     <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
       <h2 className="text-sm font-semibold text-slate-900">Quick add topic</h2>
       <p className="mt-0.5 text-xs text-slate-600">
-        Pick bundle → subject → unit, name the topic, and jump straight to editing.
+        Each dropdown is a different level: <strong>bundle</strong> is the course or batch (e.g.
+        MDCAT July session), <strong>subject</strong> is the discipline inside it (e.g. Physics,
+        Chemistry). Their titles are not meant to match. Pick bundle → subject → unit, then enter the
+        topic name.
       </p>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={submit}>
-        <select
-          value={bundleId}
-          onChange={(e) => setBundleId(e.target.value)}
-          className={selectCls}
-          required
-        >
-          <option value="">Select bundle…</option>
-          {bundles.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.title}
-            </option>
-          ))}
-        </select>
-        <select
-          value={subjectId}
-          onChange={(e) => setSubjectId(e.target.value)}
-          className={selectCls}
-          disabled={!bundleId || subjects.length === 0}
-          required
-        >
-          <option value="">Select subject…</option>
-          {subjects.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <select
-          value={unitId}
-          onChange={(e) => setUnitId(e.target.value)}
-          className={selectCls}
-          disabled={!subjectId || units.length === 0}
-          required
-        >
-          <option value="">Select unit…</option>
-          {units.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.title}
-            </option>
-          ))}
-        </select>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="New topic title"
-          className="h-9 rounded-md border border-slate-300 px-2 text-sm"
-          required
-        />
+      {(bundleTitle || subjectTitle || unitTitle) && (
+        <p className="mt-2 rounded-md bg-white px-2.5 py-1.5 text-xs text-slate-600 ring-1 ring-slate-200">
+          <span className="font-medium text-slate-700">Selected path: </span>
+          {[bundleTitle, subjectTitle, unitTitle].filter(Boolean).join(" › ")}
+        </p>
+      )}
+      <form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={submit}>
+        <div>
+          <label htmlFor="quick-bundle" className="mb-1 block text-xs font-medium text-slate-700">
+            Bundle
+          </label>
+          <select
+            id="quick-bundle"
+            value={bundleId}
+            onChange={(e) => setBundleId(e.target.value)}
+            className={selectCls}
+            required
+          >
+            <option value="">Select bundle…</option>
+            {bundles.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="quick-subject" className="mb-1 block text-xs font-medium text-slate-700">
+            Subject
+          </label>
+          <select
+            id="quick-subject"
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            onFocus={() => bundleId && void loadSubjectsForBundle(bundleId)}
+            className={selectCls}
+            disabled={!bundleId || subjects.length === 0}
+            required
+          >
+            <option value="">{bundleId ? "Select subject…" : "Choose a bundle first"}</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="quick-unit" className="mb-1 block text-xs font-medium text-slate-700">
+            Unit
+          </label>
+          <select
+            id="quick-unit"
+            value={unitId}
+            onChange={(e) => setUnitId(e.target.value)}
+            onFocus={() => subjectId && void loadUnitsForSubject(subjectId)}
+            className={selectCls}
+            disabled={!subjectId || units.length === 0}
+            required
+          >
+            <option value="">{subjectId ? "Select unit…" : "Choose a subject first"}</option>
+            {units.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="quick-topic-title" className="mb-1 block text-xs font-medium text-slate-700">
+            Topic title
+          </label>
+          <input
+            id="quick-topic-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Periodic Table Trends"
+            className="h-9 w-full rounded-md border border-slate-300 px-2 text-sm"
+            required
+          />
+        </div>
+        {bundleId && subjects.length === 0 && (
+          <p className="sm:col-span-2 text-xs text-amber-800">
+            No subjects in this bundle yet — add one under the bundle in the tree below, then open
+            this subject list again.
+          </p>
+        )}
+        {subjectId && units.length === 0 && (
+          <p className="sm:col-span-2 text-xs text-amber-800">
+            <strong>{subjectTitle}</strong> has no units yet — expand the bundle in the tree below,
+            add a unit (e.g. &ldquo;Chapter 1&rdquo;), then select it here.
+          </p>
+        )}
         <Button type="submit" size="sm" disabled={busy || !unitId} className="sm:col-span-2 w-fit">
-          {busy ? "Creating…" : "Create & edit content"}
+          {busy ? "Creating…" : "Create topic & open content"}
         </Button>
       </form>
     </section>
@@ -276,10 +457,14 @@ function UnitNode({
   unit,
   onRequestDelete,
   onDeleted,
+  onRenamed,
+  canRenameStructure,
 }: {
   unit: UnitDto;
   onRequestDelete: (pending: PendingDelete) => void;
   onDeleted: () => void;
+  onRenamed?: (unit: UnitDto) => void;
+  canRenameStructure: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [topics, setTopics] = useState<TopicDto[]>([]);
@@ -300,8 +485,26 @@ function UnitNode({
         <button type="button" onClick={toggle} className="text-slate-500">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
-        <span className="text-sm text-slate-700">{unit.title}</span>
-        <span className="text-xs text-slate-400">({unit.topicCount} topics)</span>
+        <LevelBadge level="Unit" />
+        <InlineRename
+          value={unit.title}
+          className="text-sm text-slate-700"
+          editable={canRenameStructure}
+          onSave={async (next) => {
+            const updated = await adminApi.updateUnit(unit.id, { title: next });
+            onRenamed?.(updated);
+          }}
+        />
+        <span className="text-xs text-slate-400" title="Topics inside this unit">
+          · {childCountLabel(unit.topicCount, "topic")}
+        </span>
+        <Link
+          href={`/admin/units/${unit.id}/tests`}
+          className="ml-auto text-xs text-[var(--brand)] hover:underline"
+          title="Configure unit and PYQ tests"
+        >
+          Tests
+        </Link>
         <button
           type="button"
           onClick={() =>
@@ -312,7 +515,7 @@ function UnitNode({
               onDone: onDeleted,
             })
           }
-          className="ml-auto text-slate-400 hover:text-red-600"
+          className="text-slate-400 hover:text-red-600"
           title="Delete unit"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -322,10 +525,20 @@ function UnitNode({
         <div className="space-y-1 pb-2">
           {topics.map((t) => (
             <div key={t.id} className="ml-4 flex items-center gap-2 py-0.5">
-              <span className="text-sm text-slate-600">{t.title}</span>
+              <LevelBadge level="Topic" />
+              <InlineRename
+                value={t.title}
+                className="min-w-0 flex-1 text-sm text-slate-600"
+                editable={canRenameStructure}
+                onSave={async (next) => {
+                  const updated = await adminApi.updateTopic(t.id, { title: next });
+                  setTopics((prev) => prev.map((x) => (x.id === t.id ? updated : x)));
+                }}
+              />
               <Link
                 href={`/admin/topics/${t.id}`}
-                className="ml-auto flex items-center gap-1 text-xs text-[var(--brand)] hover:underline"
+                className="flex shrink-0 items-center gap-1 text-xs text-[var(--brand)] hover:underline"
+                title="Edit lectures, notes, MCQs and flashcards"
               >
                 <FileEdit className="h-3.5 w-3.5" /> Content
               </Link>
@@ -370,11 +583,15 @@ function SubjectNode({
   onRequestDelete,
   onDeleted,
   canDelete,
+  canRenameSubject,
+  onRenamed,
 }: {
   subject: SubjectDto;
   onRequestDelete: (pending: PendingDelete) => void;
   onDeleted: () => void;
   canDelete: boolean;
+  canRenameSubject: boolean;
+  onRenamed?: (subject: SubjectDto) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [units, setUnits] = useState<UnitDto[]>([]);
@@ -395,8 +612,23 @@ function SubjectNode({
         <button type="button" onClick={toggle} className="text-slate-500">
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
-        <span className="text-sm font-medium text-slate-800">{subject.title}</span>
-        <span className="text-xs text-slate-400">({subject.unitCount} units)</span>
+        <LevelBadge level="Subject" />
+        {canRenameSubject ? (
+          <InlineRename
+            value={subject.title}
+            className="text-sm font-medium text-slate-800"
+            editable={canRenameSubject}
+            onSave={async (next) => {
+              const updated = await adminApi.updateSubject(subject.id, { title: next });
+              onRenamed?.(updated);
+            }}
+          />
+        ) : (
+          <span className="text-sm font-medium text-slate-800">{subject.title}</span>
+        )}
+        <span className="text-xs text-slate-400" title="Units inside this subject">
+          · {childCountLabel(subject.unitCount, "unit")}
+        </span>
         {canDelete && (
           <button
             type="button"
@@ -421,8 +653,12 @@ function SubjectNode({
             <UnitNode
               key={u.id}
               unit={u}
+              canRenameStructure={canRenameSubject}
               onRequestDelete={onRequestDelete}
               onDeleted={() => setUnits((prev) => prev.filter((x) => x.id !== u.id))}
+              onRenamed={(updated) =>
+                setUnits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+              }
             />
           ))}
           <div className="ml-4 mt-1">
@@ -500,6 +736,9 @@ function BundleNode({
         <button type="button" onClick={toggle} className="text-slate-500">
           {open ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
+        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+          Bundle
+        </span>
         <span className="font-semibold text-slate-900">{bundle.title}</span>
         {bundlePriceEdit && manageStructure ? (
           editingPrice ? (
@@ -584,8 +823,12 @@ function BundleNode({
                 key={s.id}
                 subject={s}
                 canDelete={manageStructure}
+                canRenameSubject={manageStructure}
                 onRequestDelete={onRequestDelete}
                 onDeleted={() => setSubjects((prev) => prev.filter((x) => x.id !== s.id))}
+                onRenamed={(updated) =>
+                  setSubjects((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+                }
               />
             ))
           )}
@@ -746,33 +989,44 @@ export default function AdminPage() {
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-bold text-slate-900">Course content</h1>
         <p className="mt-1 text-slate-600">
-          Manage bundles → subjects → units → topics. Open a topic to edit its lectures, notes,
-          MCQs and flashcards.
+          {manageStructure ? (
+            <>
+              Set up your course tree (bundle → subject → unit → topic). Use the pencil to rename
+              structure; teachers use <span className="font-medium text-slate-700">Content</span> to
+              add lectures, notes, MCQs and flashcards. For a simple course, use one unit per subject.
+            </>
+          ) : (
+            <>
+              Open <span className="font-medium text-slate-700">Content</span> on your assigned topics
+              to add lectures, notes, MCQs and flashcards. Ask your institute admin to rename or
+              reorganize bundles, subjects, units, or topics.
+            </>
+          )}
         </p>
 
         {error && (
           <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
         )}
 
-        {!loading && bundles.length > 0 && (
-          <>
-            <QuickAddTopic
-              bundles={bundles}
-              allowedSubjectIds={allowedSubjectIds}
-              onCreated={(topicId) => router.push(`/admin/topics/${topicId}`)}
-            />
+        {!loading && bundles.length > 0 && manageStructure && (
+          <QuickAddTopic
+            bundles={bundles}
+            allowedSubjectIds={allowedSubjectIds}
+            onCreated={(topicId) => router.push(`/admin/topics/${topicId}`)}
+          />
+        )}
 
-            <div className="relative mt-6">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search topics by name or path…"
-                className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm"
-              />
-            </div>
-          </>
+        {!loading && bundles.length > 0 && (
+          <div className="relative mt-6">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search topics by name or path…"
+              className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm"
+            />
+          </div>
         )}
 
         <div className="mt-6 space-y-3">

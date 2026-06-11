@@ -103,6 +103,7 @@ export default function TeacherHomePage() {
                       </div>
                       <LiveClassActions
                         state={c.state}
+                        scheduledStartUtc={c.scheduledStartUtc}
                         startUrl={c.startUrl}
                         joinUrl={c.joinUrl}
                       />
@@ -175,6 +176,7 @@ export default function TeacherHomePage() {
                             </div>
                             <LiveClassActions
                               state={c.state}
+                              scheduledStartUtc={c.scheduledStartUtc}
                               startUrl={c.startUrl}
                               joinUrl={c.joinUrl}
                             />

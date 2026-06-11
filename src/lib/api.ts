@@ -1,3 +1,4 @@
+import { notifyApiError } from "@/components/error-toast-provider";
 import { getSession, isAuthApiPath, redirectToLogin, type AuthSession } from "@/lib/auth";
 import { buildQueryString, type PagedListParams, type PagedResult } from "@/lib/paged-list";
 
@@ -7,28 +8,45 @@ const BASE_URL =
 export type { PagedListParams, PagedResult } from "@/lib/paged-list";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+  constructor(
+    public status: number,
+    message: string,
+    public traceId?: string
+  ) {
+    super(traceId ? `${message} (ref: ${traceId})` : message);
   }
 }
 
-async function errorMessageFrom(res: Response): Promise<string> {
+type ApiErrorBody = {
+  error?: string;
+  title?: string;
+  traceId?: string;
+};
+
+async function parseErrorBody(res: Response): Promise<{ message: string; traceId?: string }> {
   let message = `Request failed (${res.status})`;
+  let traceId = res.headers.get("X-Trace-Id") ?? undefined;
+
   try {
-    const body = await res.json();
-    message = body.error ?? message;
+    const body = (await res.json()) as ApiErrorBody;
+    message = body.error ?? body.title ?? message;
+    traceId = body.traceId ?? traceId;
   } catch {
     /* ignore non-JSON error bodies */
   }
-  return message;
+
+  return { message, traceId };
 }
 
 async function failResponse(res: Response, path: string): Promise<never> {
-  const message = await errorMessageFrom(res);
+  const { message, traceId } = await parseErrorBody(res);
   if (res.status === 401 && !isAuthApiPath(path)) {
     redirectToLogin();
   }
-  throw new ApiError(res.status, message);
+  if (!isAuthApiPath(path)) {
+    notifyApiError(message, traceId);
+  }
+  throw new ApiError(res.status, message, traceId);
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -39,6 +57,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (session?.accessToken) {
     headers["Authorization"] = `Bearer ${session.accessToken}`;
+  }
+  const tenantSlug =
+    session?.tenant?.slug ??
+    (typeof window !== "undefined" ? localStorage.getItem("lms.tenantSlug") : null);
+  if (tenantSlug) {
+    headers["X-Tenant-Slug"] = tenantSlug;
   }
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
@@ -143,9 +167,14 @@ export type QuizAvailabilityStatus = "Open" | "NotYetOpen" | "Closed";
 export type ResultVisibilityMode = "Immediate" | "AfterClose" | "ManualPublish";
 export type ResultsStatus = "Visible" | "PendingAfterClose" | "PendingManual";
 
+export type QuestionDifficulty = "Easy" | "Medium" | "Hard";
+export type QuizTypeName = "DailyPracticeTest" | "TopicQuiz" | "UnitTest" | "PyqTest";
+
 export type QuizDto = {
   id: string;
-  topicId: string;
+  topicId: string | null;
+  unitId: string | null;
+  type: QuizTypeName;
   title: string;
   timeLimitMinutes: number | null;
   availableFromUtc: string | null;
@@ -153,8 +182,11 @@ export type QuizDto = {
   availabilityStatus: QuizAvailabilityStatus;
   resultVisibility: ResultVisibilityMode;
   showExplanations: boolean;
+  difficultyFilter: QuestionDifficulty | null;
+  availableDifficulties: QuestionDifficulty[];
   activeAttempt: ActiveAttemptDto | null;
   questions: QuizQuestionDto[];
+  flaggedQuestionIds: string[];
 };
 
 export type StartAttemptResultDto = {
@@ -162,6 +194,7 @@ export type StartAttemptResultDto = {
   startedAtUtc: string;
   expiresAtUtc: string | null;
   questions: QuizQuestionDto[];
+  flaggedQuestionIds: string[];
 };
 export type QuestionResultDto = {
   questionId: string;
@@ -185,7 +218,16 @@ export type AttemptResultDto = {
 };
 
 export const assessmentsApi = {
-  topicQuiz: (topicId: string) => request<QuizDto>(`/api/v1/topics/${topicId}/quiz`),
+  topicQuiz: (topicId: string, difficulty?: QuestionDifficulty) => {
+    const q = difficulty ? `?difficulty=${encodeURIComponent(difficulty)}` : "";
+    return request<QuizDto>(`/api/v1/topics/${topicId}/quiz${q}`);
+  },
+  unitQuiz: (unitId: string, quizType: "unit-test" | "pyq-test", difficulty?: QuestionDifficulty) => {
+    const params = new URLSearchParams();
+    if (difficulty) params.set("difficulty", difficulty);
+    const q = params.toString() ? `?${params}` : "";
+    return request<QuizDto>(`/api/v1/units/${unitId}/quizzes/${quizType}${q}`);
+  },
   startAttempt: (quizId: string) =>
     request<StartAttemptResultDto>(`/api/v1/quizzes/${quizId}/attempts/start`, {
       method: "POST",
@@ -194,11 +236,16 @@ export const assessmentsApi = {
   submit: (
     quizId: string,
     answers: { questionId: string; selectedKey: string }[],
-    attemptId?: string | null
+    attemptId?: string | null,
+    flaggedQuestionIds?: string[]
   ) =>
     request<AttemptResultDto>(`/api/v1/quizzes/${quizId}/attempts`, {
       method: "POST",
-      body: JSON.stringify({ answers, attemptId: attemptId ?? null }),
+      body: JSON.stringify({
+        answers,
+        attemptId: attemptId ?? null,
+        flaggedQuestionIds: flaggedQuestionIds ?? [],
+      }),
     }),
   attemptResult: (quizId: string) =>
     request<AttemptResultDto>(`/api/v1/quizzes/${quizId}/attempts/result`),
@@ -208,20 +255,19 @@ export const mockExamsApi = {
   list: () => request<MockExamSummaryDto[]>("/api/v1/me/mock-exams"),
   get: (id: string) => request<MockExamSummaryDto>(`/api/v1/mock-exams/${id}`),
   startAttempt: (id: string) =>
-    request<{
-      attemptId: string;
-      startedAtUtc: string;
-      expiresAtUtc: string | null;
-      questions: MockExamQuestionDto[];
-    }>(`/api/v1/mock-exams/${id}/attempts/start`, { method: "POST", body: JSON.stringify({}) }),
+    request<StartMockAttemptResultDto>(`/api/v1/mock-exams/${id}/attempts/start`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   submit: (
     id: string,
     answers: { questionId: string; selectedKey: string }[],
-    attemptId: string
+    attemptId: string,
+    flaggedQuestionIds?: string[]
   ) =>
     request<MockExamAttemptResultDto>(`/api/v1/mock-exams/${id}/attempts`, {
       method: "POST",
-      body: JSON.stringify({ answers, attemptId }),
+      body: JSON.stringify({ answers, attemptId, flaggedQuestionIds: flaggedQuestionIds ?? [] }),
     }),
   attemptResult: (id: string) =>
     request<MockExamAttemptResultDto>(`/api/v1/mock-exams/${id}/attempts/result`),
@@ -324,9 +370,27 @@ export type AdminQuestionDto = {
   correctKey: string;
   explanation: string | null;
   order: number;
+  difficulty: QuestionDifficulty;
   isPyq: boolean;
   pyqYear: number | null;
   pyqExam: string | null;
+};
+
+export type AdminUnitQuizDto = {
+  id: string;
+  unitId: string;
+  type: QuizTypeName;
+  title: string;
+  timeLimitMinutes: number | null;
+  availableFromUtc: string | null;
+  availableUntilUtc: string | null;
+  resultVisibility: ResultVisibilityMode;
+  showExplanations: boolean;
+  resultsPublishedAtUtc: string | null;
+  notifyTeachersOnBatchComplete: boolean;
+  batchCompleteThresholdPercent: number;
+  difficultyFilter: QuestionDifficulty | null;
+  assembledQuestionCount: number;
 };
 
 export type QuestionAnalyticsDto = {
@@ -380,7 +444,9 @@ export type McqImportResultDto = {
 
 export type AdminQuizDto = {
   id: string;
-  topicId: string;
+  topicId: string | null;
+  unitId: string | null;
+  type: QuizTypeName;
   title: string;
   timeLimitMinutes: number | null;
   availableFromUtc: string | null;
@@ -390,6 +456,8 @@ export type AdminQuizDto = {
   resultsPublishedAtUtc: string | null;
   notifyTeachersOnBatchComplete: boolean;
   batchCompleteThresholdPercent: number;
+  difficultyFilter: QuestionDifficulty | null;
+  assembledQuestionCount: number;
   questions: AdminQuestionDto[];
 } | null;
 
@@ -418,6 +486,22 @@ export const adminApi = {
   deleteUnit: (id: string) => del(`/api/v1/admin/units/${id}`),
   createTopic: (unitId: string, b: { title: string; order: number; hasVideo: boolean }) =>
     post<TopicDto>(`/api/v1/admin/units/${unitId}/topics`, b),
+  getTopic: (id: string) => request<TopicDto>(`/api/v1/admin/topics/${id}`),
+  updateTopic: (id: string, b: { title: string }) =>
+    request<TopicDto>(`/api/v1/admin/topics/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+  updateSubject: (id: string, b: { title: string }) =>
+    request<SubjectDto>(`/api/v1/admin/subjects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+  updateUnit: (id: string, b: { title: string }) =>
+    request<UnitDto>(`/api/v1/admin/units/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
   deleteTopic: (id: string) => del(`/api/v1/admin/topics/${id}`),
 
   // Topic content
@@ -444,6 +528,7 @@ export const adminApi = {
       isPyq?: boolean;
       pyqYear?: number | null;
       pyqExam?: string | null;
+      difficulty?: QuestionDifficulty;
     }
   ) => post<AdminQuestionDto>(`/api/v1/admin/topics/${topicId}/questions`, b),
   deleteQuestion: (id: string) => del(`/api/v1/admin/questions/${id}`),
@@ -457,6 +542,7 @@ export const adminApi = {
       isPyq?: boolean;
       pyqYear?: number | null;
       pyqExam?: string | null;
+      difficulty?: QuestionDifficulty;
     }
   ) =>
     request<AdminQuestionDto>(`/api/v1/admin/questions/${id}`, {
@@ -483,9 +569,30 @@ export const adminApi = {
       showExplanations?: boolean;
       notifyTeachersOnBatchComplete?: boolean;
       batchCompleteThresholdPercent?: number;
+      difficultyFilter?: QuestionDifficulty | "" | null;
     }
   ) =>
     request<NonNullable<AdminQuizDto>>(`/api/v1/admin/topics/${topicId}/quiz/settings`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+  unitQuiz: (unitId: string, quizType: "unit-test" | "pyq-test") =>
+    request<AdminUnitQuizDto>(`/api/v1/admin/units/${unitId}/quizzes/${quizType}`),
+  updateUnitQuizSettings: (
+    unitId: string,
+    quizType: "unit-test" | "pyq-test",
+    b: {
+      timeLimitMinutes: number | null;
+      availableFromUtc: string | null;
+      availableUntilUtc: string | null;
+      resultVisibility?: ResultVisibilityMode;
+      showExplanations?: boolean;
+      notifyTeachersOnBatchComplete?: boolean;
+      batchCompleteThresholdPercent?: number;
+      difficultyFilter?: QuestionDifficulty | "" | null;
+    }
+  ) =>
+    request<AdminUnitQuizDto>(`/api/v1/admin/units/${unitId}/quizzes/${quizType}/settings`, {
       method: "PUT",
       body: JSON.stringify(b),
     }),
@@ -536,6 +643,13 @@ export const adminApi = {
     }),
   resetStudentPassword: (userId: string) =>
     post<ResetStudentPasswordDto>(`/api/v1/admin/students/${userId}/reset-password`, {}),
+  listStudentEnrollments: (userId: string) =>
+    request<EnrollmentDto[]>(`/api/v1/admin/students/${userId}/enrollments`),
+  extendStudentEnrollment: (userId: string, bundleId: string, expiresAt: string) =>
+    request<EnrollmentDto>(`/api/v1/admin/students/${userId}/enrollments/${bundleId}`, {
+      method: "PUT",
+      body: JSON.stringify({ expiresAt }),
+    }),
   listGuardians: (userId: string) =>
     request<StudentGuardianDto[]>(`/api/v1/admin/students/${userId}/guardians`),
   createGuardian: (
@@ -652,8 +766,14 @@ export const adminApi = {
     request<LeaderboardRowDto[]>(
       `/api/v1/admin/subjects/${subjectId}/leaderboard?take=${take}`
     ),
-  listMockExams: (subjectId: string) =>
-    request<AdminMockExamDto[]>(`/api/v1/admin/subjects/${subjectId}/mock-exams`),
+  listMockExams: (subjectId: string, includeArchived = false) =>
+    request<AdminMockExamDto[]>(
+      `/api/v1/admin/subjects/${subjectId}/mock-exams?includeArchived=${includeArchived}`
+    ),
+  listMockExamsForBundle: (bundleId: string, includeArchived = false) =>
+    request<AdminMockExamDto[]>(
+      `/api/v1/admin/bundles/${bundleId}/mock-exams?includeArchived=${includeArchived}`
+    ),
   getMockExam: (id: string) => request<AdminMockExamDto>(`/api/v1/admin/mock-exams/${id}`),
   createMockExam: (b: CreateMockExamRequest) =>
     post<AdminMockExamDto>("/api/v1/admin/mock-exams", b),
@@ -667,7 +787,14 @@ export const adminApi = {
       method: "PUT",
       body: JSON.stringify({}),
     }),
+  setMockExamArchived: (id: string, isArchived: boolean) =>
+    request<AdminMockExamDto>(`/api/v1/admin/mock-exams/${id}/archive`, {
+      method: "PUT",
+      body: JSON.stringify({ isArchived }),
+    }),
   deleteMockExam: (id: string) => del(`/api/v1/admin/mock-exams/${id}`),
+  mockExamLeaderboard: (id: string, take = 100) =>
+    request<MockExamLeaderboardDto>(`/api/v1/admin/mock-exams/${id}/leaderboard?take=${take}`),
   liveClassAttendance: (id: string) =>
     request<LiveClassAttendanceDto>(`/api/v1/admin/live-classes/${id}/attendance`),
   cancelLiveClass: (id: string) => del(`/api/v1/admin/live-classes/${id}`),
@@ -772,21 +899,42 @@ export type MockExamTopicDto = {
   order: number;
 };
 
+export type MockExamSectionDto = {
+  id: string;
+  title: string;
+  sortOrder: number;
+  sectionTimeLimitMinutes: number | null;
+  topics: MockExamTopicDto[];
+};
+
+export type MockExamSectionInput = {
+  title: string;
+  sortOrder: number;
+  sectionTimeLimitMinutes?: number | null;
+  topics: { topicId: string; questionCount: number }[];
+};
+
 export type AdminMockExamDto = {
   id: string;
+  bundleId: string;
+  bundleTitle: string;
   subjectId: string;
   subjectTitle: string;
   title: string;
   description: string | null;
   timeLimitMinutes: number;
+  marksPerCorrect: number;
+  penaltyPerWrong: number;
   availableFromUtc: string | null;
   availableUntilUtc: string | null;
   isPublished: boolean;
+  isArchived: boolean;
   resultVisibility: ResultVisibilityMode;
   showExplanations: boolean;
   resultsPublishedAtUtc: string | null;
   notifyTeachersOnBatchComplete: boolean;
   batchCompleteThresholdPercent: number;
+  sections: MockExamSectionDto[];
   topics: MockExamTopicDto[];
 };
 
@@ -795,6 +943,8 @@ export type CreateMockExamRequest = {
   title: string;
   description: string | null;
   timeLimitMinutes: number;
+  marksPerCorrect?: number;
+  penaltyPerWrong?: number;
   availableFromUtc: string | null;
   availableUntilUtc: string | null;
   isPublished: boolean;
@@ -802,23 +952,36 @@ export type CreateMockExamRequest = {
   showExplanations?: boolean;
   notifyTeachersOnBatchComplete?: boolean;
   batchCompleteThresholdPercent?: number;
-  topics: { topicId: string; questionCount: number }[];
+  sections?: MockExamSectionInput[];
+  topics?: { topicId: string; questionCount: number }[];
 };
 
 export type UpdateMockExamRequest = Omit<CreateMockExamRequest, "subjectId">;
 
 export type MockExamSummaryDto = {
   id: string;
+  bundleId: string;
+  bundleTitle: string;
   subjectId: string;
   subjectTitle: string;
   title: string;
   description: string | null;
   timeLimitMinutes: number;
+  marksPerCorrect: number;
+  penaltyPerWrong: number;
   availableFromUtc: string | null;
   availableUntilUtc: string | null;
   availabilityStatus: QuizAvailabilityStatus;
   totalQuestions: number;
+  accessExpiresAtUtc: string | null;
   activeAttempt: { attemptId: string; startedAtUtc: string; expiresAtUtc: string | null } | null;
+};
+
+export type MockExamSectionNavDto = {
+  title: string;
+  sortOrder: number;
+  startQuestionNumber: number;
+  questionCount: number;
 };
 
 export type MockExamQuestionDto = {
@@ -826,18 +989,55 @@ export type MockExamQuestionDto = {
   stem: string;
   options: string[];
   order: number;
+  sectionTitle?: string | null;
+};
+
+export type StartMockAttemptResultDto = {
+  attemptId: string;
+  startedAtUtc: string;
+  expiresAtUtc: string | null;
+  questions: MockExamQuestionDto[];
+  flaggedQuestionIds: string[];
+  sections: MockExamSectionNavDto[];
+};
+
+export type MockExamRankDto = {
+  rank: number;
+  totalAttempts: number;
+  percentile: number;
 };
 
 export type MockExamAttemptResultDto = {
   attemptId: string;
   score: number;
   total: number;
+  correctCount: number;
+  wrongCount: number;
+  marksPerCorrect: number;
+  penaltyPerWrong: number;
   resultsVisible: boolean;
   resultsStatus: ResultsStatus;
   resultsMessage: string | null;
   resultsAvailableAtUtc: string | null;
   showExplanations: boolean;
+  rank: MockExamRankDto | null;
   questions: QuestionResultDto[];
+};
+
+export type MockExamLeaderboardRowDto = {
+  rank: number;
+  userId: string;
+  name: string;
+  score: number;
+  correctCount: number;
+  wrongCount: number;
+  submittedAtUtc: string;
+  isMe: boolean;
+};
+
+export type MockExamLeaderboardDto = {
+  rows: MockExamLeaderboardRowDto[];
+  totalAttempts: number;
 };
 
 export type TeacherSubjectAssignmentDto = {
@@ -1023,6 +1223,33 @@ export const superAdminApi = {
       method: "PUT",
       body: JSON.stringify(b),
     }),
+};
+
+export type RequestIncidentDto = {
+  id: string;
+  traceId: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  errorMessage: string | null;
+  exceptionType: string | null;
+  exceptionDetail: string | null;
+  tenantId: string | null;
+  tenantSlug: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  durationMs: number;
+  createdAt: string;
+};
+
+export const supportApi = {
+  searchIncidents: (traceId?: string, take = 25) => {
+    const q = new URLSearchParams();
+    if (traceId?.trim()) q.set("traceId", traceId.trim());
+    q.set("take", String(take));
+    const qs = q.toString();
+    return request<RequestIncidentDto[]>(`/api/v1/support/incidents${qs ? `?${qs}` : ""}`);
+  },
 };
 
 export type BrandingDto = {

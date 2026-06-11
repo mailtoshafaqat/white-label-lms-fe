@@ -38,7 +38,7 @@ export default function AdminDoubtThreadPage({ params }: { params: Promise<{ id:
 
   async function sendReply(e: React.FormEvent) {
     e.preventDefault();
-    if (!reply.trim()) return;
+    if (!reply.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
