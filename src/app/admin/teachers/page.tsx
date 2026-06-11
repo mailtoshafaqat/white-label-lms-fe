@@ -1,8 +1,18 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Copy, Check, KeyRound, Ban, UserCheck } from "lucide-react";
+import {
+  Plus,
+  Copy,
+  Check,
+  KeyRound,
+  Ban,
+  UserCheck,
+  ChevronDown,
+  Pencil,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
@@ -12,7 +22,6 @@ import { AdminPagination } from "@/components/admin-pagination";
 import { usePagedList } from "@/hooks/use-paged-list";
 import {
   adminApi,
-  coursesApi,
   type AssignedSubjectDto,
   type CreatedTeacherDto,
   type ResetTeacherPasswordDto,
@@ -39,8 +48,13 @@ function AdminTeachersContent() {
   const [resetResult, setResetResult] = useState<ResetTeacherPasswordDto | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
 
+  const fetchTeachers = useCallback(
+    (params: Parameters<typeof adminApi.listTeachers>[0]) => adminApi.listTeachers(params),
+    []
+  );
+
   const list = usePagedList({
-    fetch: (params) => adminApi.listTeachers(params),
+    fetch: fetchTeachers,
     syncUrl: true,
   });
 
@@ -56,22 +70,10 @@ function AdminTeachersContent() {
     }
 
     async function loadMeta() {
-      const [bundles, maps] = await Promise.all([
-        coursesApi.bundles(),
+      const [allSubjects, maps] = await Promise.all([
+        adminApi.listAssignableSubjects(),
         adminApi.listSubjectTeachers(),
       ]);
-      const allSubjects: AssignedSubjectDto[] = [];
-      for (const b of bundles) {
-        const detail = await coursesApi.bundle(b.id);
-        for (const s of detail.subjects) {
-          allSubjects.push({
-            subjectId: s.id,
-            subjectTitle: s.title,
-            bundleId: b.id,
-            bundleTitle: b.title,
-          });
-        }
-      }
       setSubjects(allSubjects);
       const map: Record<string, string[]> = {};
       for (const row of maps) map[row.userId] = row.subjectIds;
@@ -171,10 +173,19 @@ function AdminTeachersContent() {
     }
   }
 
-  const byBundle = subjects.reduce<Record<string, AssignedSubjectDto[]>>((acc, s) => {
-    (acc[s.bundleTitle] ??= []).push(s);
-    return acc;
-  }, {});
+  const subjectById = useMemo(
+    () => new Map(subjects.map((s) => [s.subjectId, s])),
+    [subjects]
+  );
+
+  const byBundle = useMemo(
+    () =>
+      subjects.reduce<Record<string, AssignedSubjectDto[]>>((acc, s) => {
+        (acc[s.bundleTitle] ??= []).push(s);
+        return acc;
+      }, {}),
+    [subjects]
+  );
 
   const emptyMessage =
     list.debouncedSearch.trim().length > 0
@@ -184,7 +195,7 @@ function AdminTeachersContent() {
   return (
     <div className="min-h-screen">
       <AdminNav />
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-5xl px-6 py-8">
         <h1 className="text-2xl font-bold text-slate-900">Teachers</h1>
         <p className="mt-1 text-slate-600">
           Create teacher accounts and assign one or more subjects (e.g. Physics + Math for Sajid).
@@ -281,102 +292,25 @@ function AdminTeachersContent() {
           </div>
         )}
 
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-3">
           {list.loading || metaLoading ? (
             <p className="text-slate-500">Loading…</p>
           ) : list.data.length === 0 ? (
             <p className="text-slate-500">{emptyMessage}</p>
           ) : (
             list.data.map((t) => (
-              <Card key={t.userId}>
-                <CardHeader>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <CardTitle className="text-base">
-                      {t.fullName}{" "}
-                      <span className="text-sm font-normal text-slate-500">{t.email}</span>
-                    </CardTitle>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          t.isActive
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {t.isActive ? "Active" : "Blocked"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setResetConfirm(t)}
-                        className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                      >
-                        <KeyRound className="h-3 w-3" /> Reset password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStatusConfirm(t)}
-                        className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs ${
-                          t.isActive
-                            ? "border-red-200 text-red-700 hover:bg-red-50"
-                            : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                        }`}
-                      >
-                        {t.isActive ? (
-                          <>
-                            <Ban className="h-3 w-3" /> Block
-                          </>
-                        ) : (
-                          <>
-                            <UserCheck className="h-3 w-3" /> Activate
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="mb-2 text-sm font-medium text-slate-700">Assigned subjects</p>
-                  <div className="space-y-3">
-                    {Object.entries(byBundle).map(([bundleTitle, subs]) => (
-                      <div key={bundleTitle}>
-                        <p className="text-xs font-semibold uppercase text-slate-500">{bundleTitle}</p>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {subs.map((s) => {
-                            const checked = (assignments[t.userId] ?? []).includes(s.subjectId);
-                            return (
-                              <label
-                                key={s.subjectId}
-                                className={`cursor-pointer rounded-md border px-2 py-1 text-sm ${
-                                  checked
-                                    ? "border-[var(--brand)] bg-blue-50 text-[var(--brand)]"
-                                    : "border-slate-200 text-slate-600"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  className="mr-1"
-                                  checked={checked}
-                                  onChange={() => toggleSubject(t.userId, s.subjectId)}
-                                />
-                                {s.subjectTitle}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="mt-4"
-                    disabled={savingId === t.userId}
-                    onClick={() => saveAssignments(t.userId)}
-                  >
-                    {savingId === t.userId ? "Saving…" : "Save assignments"}
-                  </Button>
-                </CardContent>
-              </Card>
+              <TeacherCard
+                key={t.userId}
+                teacher={t}
+                byBundle={byBundle}
+                subjectById={subjectById}
+                assignedIds={assignments[t.userId] ?? []}
+                saving={savingId === t.userId}
+                onToggleSubject={(subjectId) => toggleSubject(t.userId, subjectId)}
+                onSave={() => saveAssignments(t.userId)}
+                onResetPassword={() => setResetConfirm(t)}
+                onToggleStatus={() => setStatusConfirm(t)}
+              />
             ))
           )}
         </div>
@@ -425,6 +359,203 @@ function AdminTeachersContent() {
         }}
       />
     </div>
+  );
+}
+
+function teacherInitials(fullName: string) {
+  return fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+type TeacherCardProps = {
+  teacher: TeacherListItemDto;
+  byBundle: Record<string, AssignedSubjectDto[]>;
+  subjectById: Map<string, AssignedSubjectDto>;
+  assignedIds: string[];
+  saving: boolean;
+  onToggleSubject: (subjectId: string) => void;
+  onSave: () => void;
+  onResetPassword: () => void;
+  onToggleStatus: () => void;
+};
+
+function TeacherCard({
+  teacher,
+  byBundle,
+  subjectById,
+  assignedIds,
+  saving,
+  onToggleSubject,
+  onSave,
+  onResetPassword,
+  onToggleStatus,
+}: TeacherCardProps) {
+  const [editing, setEditing] = useState(false);
+  const assignedSubjects = assignedIds
+    .map((id) => subjectById.get(id))
+    .filter((s): s is AssignedSubjectDto => Boolean(s));
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600"
+            aria-hidden
+          >
+            {teacherInitials(teacher.fullName) || "?"}
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900">{teacher.fullName}</h2>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  teacher.isActive
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {teacher.isActive ? "Active" : "Blocked"}
+              </span>
+            </div>
+            <p className="truncate text-sm text-slate-500">{teacher.email}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={onResetPassword}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Reset password
+          </button>
+          <button
+            type="button"
+            onClick={onToggleStatus}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
+              teacher.isActive
+                ? "border-red-200 text-red-700 hover:bg-red-50"
+                : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            }`}
+          >
+            {teacher.isActive ? (
+              <>
+                <Ban className="h-3.5 w-3.5" />
+                Block
+              </>
+            ) : (
+              <>
+                <UserCheck className="h-3.5 w-3.5" />
+                Activate
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {assignedSubjects.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {assignedSubjects.map((s) => (
+                  <span
+                    key={s.subjectId}
+                    className="inline-flex items-center rounded-full border border-[var(--brand)]/20 bg-white px-2.5 py-0.5 text-xs font-medium text-[var(--brand)]"
+                    title={s.bundleTitle}
+                  >
+                    {s.subjectTitle}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No subjects assigned yet</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing((open) => !open)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {editing ? (
+              <>
+                <X className="h-3.5 w-3.5" />
+                Close
+              </>
+            ) : (
+              <>
+                <Pencil className="h-3.5 w-3.5" />
+                Edit subjects
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <CardContent className="border-t border-slate-100 pt-4">
+          <div className="space-y-2">
+            {Object.entries(byBundle).map(([bundleTitle, subs]) => {
+              const selectedInBundle = subs.filter((s) => assignedIds.includes(s.subjectId)).length;
+              return (
+                <details
+                  key={bundleTitle}
+                  className="group rounded-lg border border-slate-200 bg-white"
+                  open={selectedInBundle > 0}
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0 truncate">{bundleTitle}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
+                      {selectedInBundle > 0 ? (
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-[var(--brand)]">
+                          {selectedInBundle} selected
+                        </span>
+                      ) : (
+                        <span>{subs.length} subjects</span>
+                      )}
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </span>
+                  </summary>
+                  <div className="flex flex-wrap gap-2 border-t border-slate-100 px-3 py-3">
+                    {subs.map((s) => {
+                      const checked = assignedIds.includes(s.subjectId);
+                      return (
+                        <label
+                          key={s.subjectId}
+                          className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors ${
+                            checked
+                              ? "border-[var(--brand)] bg-blue-50 text-[var(--brand)]"
+                              : "border-slate-200 text-slate-600 hover:border-slate-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={checked}
+                            onChange={() => onToggleSubject(s.subjectId)}
+                          />
+                          {s.subjectTitle}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button type="button" size="sm" disabled={saving} onClick={onSave}>
+              {saving ? "Saving…" : "Save assignments"}
+            </Button>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 

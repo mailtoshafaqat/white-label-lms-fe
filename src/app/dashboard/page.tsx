@@ -22,13 +22,19 @@ import {
 } from "@/lib/api";
 import { canStudentJoinLiveClass, liveClassJoinHint } from "@/lib/live-class-utils";
 import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll } from "@/lib/auth";
+import { useAuthSession } from "@/lib/use-auth-session";
+import {
+  hasDoubts,
+  hasMockExams,
+  hasMistakeDiary,
+  hasSyllabusMentor,
+} from "@/lib/product-profile";
 
 type LeaderboardSize = 5 | 10;
 
 const LEADERBOARD_SIZE_KEY = "leaderboardTake";
 
 function readLeaderboardSize(): LeaderboardSize {
-  if (typeof window === "undefined") return 10;
   return localStorage.getItem(LEADERBOARD_SIZE_KEY) === "5" ? 5 : 10;
 }
 
@@ -48,6 +54,7 @@ function rankBadgeClass(rank: number): string {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const authSession = useAuthSession();
   const [name, setName] = useState("");
   const [admin, setAdmin] = useState(false);
   const [superAdmin, setSuperAdmin] = useState(false);
@@ -56,7 +63,7 @@ export default function DashboardPage() {
   const [topics, setTopics] = useState<TopicDto[]>([]);
   const [grades, setGrades] = useState<GradeDto[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRowDto[]>([]);
-  const [leaderboardTake, setLeaderboardTake] = useState<LeaderboardSize>(() => readLeaderboardSize());
+  const [leaderboardTake, setLeaderboardTake] = useState<LeaderboardSize>(10);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
   const [liveClasses, setLiveClasses] = useState<LiveClassDto[]>([]);
@@ -64,6 +71,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingDto | null>(null);
+
+  useEffect(() => {
+    setLeaderboardTake(readLeaderboardSize());
+  }, []);
 
   useEffect(() => {
     const session = getSession();
@@ -171,10 +182,15 @@ export default function DashboardPage() {
       <main className="mx-auto max-w-6xl px-6 py-8">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
         <p className="mt-1 text-slate-600">
-          Continue where you left off.{" "}
-          <Link href="/mock-exams" className="font-medium text-[var(--brand)] hover:underline">
-            Mock exams
-          </Link>
+          Continue where you left off.
+          {hasMockExams(authSession?.tenant) && (
+            <>
+              {" "}
+              <Link href="/mock-exams" className="font-medium text-[var(--brand)] hover:underline">
+                Mock exams
+              </Link>
+            </>
+          )}
         </p>
 
         {error && (
@@ -230,7 +246,7 @@ export default function DashboardPage() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-900">Continue learning</h2>
             <div className="flex flex-wrap gap-3">
-              {branding?.syllabusMentorEnabled !== false && (
+              {hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled) && (
                 <Link
                   href="/mentor"
                   className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
@@ -238,18 +254,22 @@ export default function DashboardPage() {
                   <Brain className="h-4 w-4" /> Syllabus Mentor
                 </Link>
               )}
-              <Link
-                href="/doubts"
-                className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-              >
-                <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
-              </Link>
-              <Link
-                href="/mistakes"
-                className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-              >
-                <BookX className="h-4 w-4" /> Mistake diary
-              </Link>
+              {hasDoubts(authSession?.tenant) && (
+                <Link
+                  href="/doubts"
+                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+                >
+                  <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
+                </Link>
+              )}
+              {hasMistakeDiary(authSession?.tenant) && (
+                <Link
+                  href="/mistakes"
+                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
+                >
+                  <BookX className="h-4 w-4" /> Mistake diary
+                </Link>
+              )}
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">

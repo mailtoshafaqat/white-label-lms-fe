@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Building2, ClipboardCheck, KeyRound, LayoutGrid, LogOut, LifeBuoy } from "lucide-react";
-import { clearSession, getSession, isSuperAdmin } from "@/lib/auth";
+import { clearSession, isSuperAdmin } from "@/lib/auth";
+import { useAuthSession } from "@/lib/use-auth-session";
 
 export function PlatformShell({
   title,
@@ -16,7 +17,7 @@ export function PlatformShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const session = getSession();
+  const session = useAuthSession();
   const superAdmin = isSuperAdmin(session);
 
   function logout() {

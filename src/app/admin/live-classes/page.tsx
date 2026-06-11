@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, RefreshCw, Trash2, Video } from "lucide-react";
@@ -11,7 +11,7 @@ import { LiveClassActions } from "@/components/live-class-actions";
 import { LiveClassAttendancePanel } from "@/components/live-class-attendance";
 import { AdminListToolbar } from "@/components/admin-list-toolbar";
 import { AdminPagination } from "@/components/admin-pagination";
-import { usePagedList } from "@/hooks/use-paged-list";
+import { PAGED_LIST_EMPTY_EXTRAS, usePagedList } from "@/hooks/use-paged-list";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import {
   coursesApi,
@@ -157,14 +157,24 @@ function AdminLiveClassesContent() {
 
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
-  const list = usePagedList({
-    fetch: (params) =>
+  const listExtras = useMemo(
+    () => (stateFilter === "all" ? PAGED_LIST_EMPTY_EXTRAS : { state: stateFilter }),
+    [stateFilter]
+  );
+
+  const fetchLiveClasses = useCallback(
+    (params: Parameters<typeof adminApi.listLiveClasses>[0]) =>
       adminApi.listLiveClasses({
         ...params,
         state: stateFilter === "all" ? undefined : stateFilter,
       }),
+    [stateFilter]
+  );
+
+  const list = usePagedList({
+    fetch: fetchLiveClasses,
     syncUrl: true,
-    extraParams: stateFilter === "all" ? {} : { state: stateFilter },
+    extraParams: listExtras,
   });
 
   useEffect(() => {

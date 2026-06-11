@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
   Circle,
+  ClipboardList,
   Mail,
   Palette,
   Package,
@@ -20,65 +21,48 @@ import {
   canManageInstitute,
   getSession,
   markSetupWizardComplete,
+  type AuthSession,
 } from "@/lib/auth";
+import { getSetupSteps, type SetupStep } from "@/lib/setup-wizard-steps";
 
-const STEPS = [
-  {
-    title: "Branding",
-    description: "Set your institute name, logo, and brand colors so learners see your identity.",
-    href: "/admin/settings/branding",
-    linkLabel: "Open branding settings",
-    icon: Palette,
-  },
-  {
-    title: "Email (SMTP)",
-    description: "Configure outbound email so welcome messages and notifications reach students.",
-    href: "/admin/settings/email",
-    linkLabel: "Open email settings",
-    icon: Mail,
-  },
-  {
-    title: "First course bundle",
-    description: "Create your first course bundle and add subjects, units, and topics.",
-    href: "/admin",
-    linkLabel: "Go to content admin",
-    icon: Package,
-  },
-  {
-    title: "First student",
-    description: "Provision a student account and optionally enroll them in a course.",
-    href: "/admin/students",
-    linkLabel: "Add a student",
-    icon: UserPlus,
-  },
-  {
-    title: "Done",
-    description: "You're ready to explore the full setup checklist and launch your institute.",
-    href: null,
-    linkLabel: null,
-    icon: Sparkles,
-  },
-] as const;
+const ICONS = {
+  Palette,
+  Mail,
+  Package,
+  UserPlus,
+  Sparkles,
+  ClipboardList,
+} as const;
+
+function stepIcon(step: SetupStep) {
+  const Icon = ICONS[step.iconName];
+  return <Icon className="h-6 w-6 text-[var(--brand)]" />;
+}
 
 export default function AdminSetupPage() {
   const router = useRouter();
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [step, setStep] = useState(0);
   const [skipped, setSkipped] = useState<Record<number, boolean>>({});
 
+  const steps = useMemo(() => getSetupSteps(session), [session]);
+
   useEffect(() => {
-    const session = getSession();
-    if (!session) {
+    const s = getSession();
+    if (!s) {
       router.replace("/login");
       return;
     }
-    if (!canManageInstitute(session)) {
+    if (!canManageInstitute(s)) {
       router.replace("/admin");
+      return;
     }
+    setSession(s);
   }, [router]);
 
   function skipStep(index: number) {
     setSkipped((prev) => ({ ...prev, [index]: true }));
-    if (index < STEPS.length - 1) {
+    if (index < steps.length - 1) {
       setStep(index + 1);
     }
   }
@@ -88,9 +72,10 @@ export default function AdminSetupPage() {
     router.replace("/admin/checklist");
   }
 
-  const current = STEPS[step];
-  const Icon = current.icon;
-  const isLast = step === STEPS.length - 1;
+  if (!session) return null;
+
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -106,7 +91,7 @@ export default function AdminSetupPage() {
         </p>
 
         <div className="mt-8 flex gap-2">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <div
               key={s.title}
               className={`h-1.5 flex-1 rounded-full ${
@@ -119,12 +104,10 @@ export default function AdminSetupPage() {
         <Card className="mt-8">
           <CardContent className="pt-6">
             <div className="flex items-start gap-4">
-              <div className="rounded-lg bg-slate-100 p-3">
-                <Icon className="h-6 w-6 text-[var(--brand)]" />
-              </div>
+              <div className="rounded-lg bg-slate-100 p-3">{stepIcon(current)}</div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Step {step + 1} of {STEPS.length}
+                  Step {step + 1} of {steps.length}
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-slate-900">{current.title}</h2>
                 <p className="mt-2 text-slate-600">{current.description}</p>
@@ -146,7 +129,7 @@ export default function AdminSetupPage() {
                   )}
                   {!isLast && (
                     <Button type="button" variant="outline" onClick={() => skipStep(step)}>
-                      Set up later
+                      {step === 0 ? "Continue" : "Set up later"}
                     </Button>
                   )}
                   {isLast && (
@@ -162,7 +145,7 @@ export default function AdminSetupPage() {
         </Card>
 
         <ul className="mt-8 space-y-2">
-          {STEPS.map((s, i) => {
+          {steps.map((s, i) => {
             const done = i < step || skipped[i] || (isLast && i === step);
             return (
               <li

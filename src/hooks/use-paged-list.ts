@@ -21,17 +21,40 @@ type UsePagedListOptions<T> = {
   enabled?: boolean;
 };
 
+/** Stable empty extras for paged lists (do not pass inline `{}` — new object every render). */
+export const PAGED_LIST_EMPTY_EXTRAS: Record<string, string | undefined> = {};
+
+const EMPTY_EXTRA_PARAMS = PAGED_LIST_EMPTY_EXTRAS;
+
+function buildListQueryString(
+  state: {
+    page: number;
+    pageSize: number;
+    search: string;
+    sortBy: string;
+    sortDir: "asc" | "desc";
+  },
+  extraParams: Record<string, string | undefined>
+): string {
+  const params = new URLSearchParams(pagedListToUrlParams(state));
+  for (const [key, value] of Object.entries(extraParams)) {
+    if (value) params.set(key, value);
+  }
+  return params.toString();
+}
+
 export function usePagedList<T>({
   fetch,
   initialPageSize = DEFAULT_PAGE_SIZE,
   debounceMs = 300,
   syncUrl = false,
-  extraParams = {},
+  extraParams,
   enabled = true,
 }: UsePagedListOptions<T>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const extras = extraParams ?? EMPTY_EXTRA_PARAMS;
 
   const urlState = useMemo(
     () =>
@@ -39,6 +62,12 @@ export function usePagedList<T>({
         ? parsePagedListFromUrl(searchParams, { pageSize: initialPageSize })
         : { page: 1, pageSize: initialPageSize, search: "", sortBy: "", sortDir: "desc" as const },
     [syncUrl, searchParams, initialPageSize]
+  );
+
+  const urlStateKey = useMemo(
+    () =>
+      `${urlState.page}|${urlState.pageSize}|${urlState.search}|${urlState.sortBy}|${urlState.sortDir}`,
+    [urlState]
   );
 
   const [page, setPage] = useState(urlState.page);
@@ -56,17 +85,23 @@ export function usePagedList<T>({
   const fetchRef = useRef(fetch);
   fetchRef.current = fetch;
 
-  const extraKey = JSON.stringify(extraParams);
+  const extraKey = JSON.stringify(extras);
+  const lastUrlStateKey = useRef(urlStateKey);
+  const searchParamsRef = useRef(searchParams);
+  searchParamsRef.current = searchParams;
 
+  // Browser back/forward or external URL change → sync React state.
   useEffect(() => {
     if (!syncUrl) return;
+    if (lastUrlStateKey.current === urlStateKey) return;
+    lastUrlStateKey.current = urlStateKey;
     setPage(urlState.page);
     setPageSize(urlState.pageSize);
     setSearchInput(urlState.search);
     setDebouncedSearch(urlState.search);
     setSortBy(urlState.sortBy);
     setSortDir(urlState.sortDir);
-  }, [syncUrl, urlState]);
+  }, [syncUrl, urlState, urlStateKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -76,7 +111,13 @@ export function usePagedList<T>({
   }, [searchInput, debounceMs]);
 
   const prevSearchRef = useRef(debouncedSearch);
+  const skipSearchPageReset = useRef(true);
   useEffect(() => {
+    if (skipSearchPageReset.current) {
+      skipSearchPageReset.current = false;
+      prevSearchRef.current = debouncedSearch;
+      return;
+    }
     if (prevSearchRef.current !== debouncedSearch) {
       prevSearchRef.current = debouncedSearch;
       setPage(1);
@@ -84,14 +125,20 @@ export function usePagedList<T>({
   }, [debouncedSearch]);
 
   const prevExtraRef = useRef(extraKey);
+  const skipExtraPageReset = useRef(true);
   useEffect(() => {
+    if (skipExtraPageReset.current) {
+      skipExtraPageReset.current = false;
+      prevExtraRef.current = extraKey;
+      return;
+    }
     if (prevExtraRef.current !== extraKey) {
       prevExtraRef.current = extraKey;
       setPage(1);
     }
   }, [extraKey]);
 
-  const syncToUrl = useCallback(
+  const replaceUrlIfNeeded = useCallback(
     (next: {
       page: number;
       pageSize: number;
@@ -100,14 +147,13 @@ export function usePagedList<T>({
       sortDir: "asc" | "desc";
     }) => {
       if (!syncUrl) return;
-      const params = new URLSearchParams(pagedListToUrlParams(next));
-      for (const [key, value] of Object.entries(extraParams)) {
-        if (value) params.set(key, value);
-      }
-      const qs = params.toString();
+      const parsedExtras = JSON.parse(extraKey) as Record<string, string | undefined>;
+      const qs = buildListQueryString(next, parsedExtras);
+      if (searchParamsRef.current.toString() === qs) return;
+      lastUrlStateKey.current = `${next.page}|${next.pageSize}|${next.search}|${next.sortBy}|${next.sortDir}`;
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [syncUrl, router, pathname, extraParams]
+    [syncUrl, router, pathname, extraKey]
   );
 
   const load = useCallback(async () => {
@@ -115,14 +161,14 @@ export function usePagedList<T>({
     setLoading(true);
     setError(null);
     try {
-      const extras = JSON.parse(extraKey) as Record<string, string | undefined>;
+      const parsedExtras = JSON.parse(extraKey) as Record<string, string | undefined>;
       const result = await fetchRef.current({
         page,
         pageSize,
         search: debouncedSearch.trim() || undefined,
         sortBy: sortBy || undefined,
         sortDir,
-        ...extras,
+        ...parsedExtras,
       });
       setData(result.data);
       setTotal(result.total);
@@ -135,13 +181,22 @@ export function usePagedList<T>({
     }
   }, [enabled, page, pageSize, debouncedSearch, sortBy, sortDir, extraKey]);
 
+  const skipInitialUrlSync = useRef(true);
+  const replaceUrlRef = useRef(replaceUrlIfNeeded);
+  replaceUrlRef.current = replaceUrlIfNeeded;
+
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    syncToUrl({ page, pageSize, search: debouncedSearch, sortBy, sortDir });
-  }, [page, pageSize, debouncedSearch, sortBy, sortDir, syncToUrl]);
+    if (!syncUrl) return;
+    if (skipInitialUrlSync.current) {
+      skipInitialUrlSync.current = false;
+      return;
+    }
+    replaceUrlRef.current({ page, pageSize, search: debouncedSearch, sortBy, sortDir });
+  }, [page, pageSize, debouncedSearch, sortBy, sortDir, syncUrl]);
 
   return {
     data,

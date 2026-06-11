@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Settings, Sparkles, Users } from "lucide-react";
 import { SuperAdminShell } from "@/components/superadmin-shell";
-import { superAdminApi, type TenantListItemDto } from "@/lib/api";
+import { superAdminApi, type ProductProfile, type TenantListItemDto } from "@/lib/api";
+import { PRODUCT_PROFILE_LABELS } from "@/lib/product-profile";
 import { getSession, isSuperAdmin } from "@/lib/auth";
 
 const statusStyle: Record<string, string> = {
@@ -28,6 +29,7 @@ export default function SuperAdminPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [plan, setPlan] = useState("MVP");
+  const [productProfile, setProductProfile] = useState<ProductProfile>("ExamPrep");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function SuperAdminPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const t = await superAdminApi.createTenant({ name, slug, plan });
+      const t = await superAdminApi.createTenant({ name, slug, plan, productProfile });
       setTenants((prev) => [
         {
           id: t.id,
@@ -132,6 +134,23 @@ export default function SuperAdminPage() {
               </select>
               <p className="mt-1 text-xs text-slate-500">
                 Label for billing/ops. MVP = full current feature set. Pro reserved for future analytics & platform payments.
+              </p>
+            </div>
+            <div>
+              <label className={label}>Product profile</label>
+              <select
+                value={productProfile}
+                onChange={(e) => setProductProfile(e.target.value as ProductProfile)}
+                className={selectField}
+              >
+                {(Object.keys(PRODUCT_PROFILE_LABELS) as ProductProfile[]).map((key) => (
+                  <option key={key} value={key}>
+                    {PRODUCT_PROFILE_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Sets menus and exam-prep modules. Institute can use feature flags for fine tuning.
               </p>
             </div>
             <button

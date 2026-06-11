@@ -27,7 +27,14 @@ import {
   type UnitDto,
   type TopicDto,
 } from "@/lib/api";
-import { getSession, isAdmin, canManageInstitute } from "@/lib/auth";
+import { getSession, isAdmin, canManageInstitute, type TenantFeatures } from "@/lib/auth";
+import {
+  parseProductProfile,
+  profileBundleLabel,
+  profileBundleLabelPlural,
+  quickAddTopicExamples,
+} from "@/lib/product-profile";
+import { useClientMounted } from "@/lib/use-auth-session";
 
 type DeleteKind = "bundle" | "subject" | "unit" | "topic";
 
@@ -262,12 +269,15 @@ function InlineAdd({ label, onAdd }: { label: string; onAdd: (title: string) => 
 function QuickAddTopic({
   bundles,
   allowedSubjectIds,
+  tenant,
   onCreated,
 }: {
   bundles: BundleDto[];
   allowedSubjectIds: Set<string> | null;
+  tenant?: TenantFeatures | null;
   onCreated: (topicId: string) => void;
 }) {
+  const examples = quickAddTopicExamples(tenant);
   const [bundleId, setBundleId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [unitId, setUnitId] = useState("");
@@ -346,10 +356,10 @@ function QuickAddTopic({
     <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
       <h2 className="text-sm font-semibold text-slate-900">Quick add topic</h2>
       <p className="mt-0.5 text-xs text-slate-600">
-        Each dropdown is a different level: <strong>bundle</strong> is the course or batch (e.g.
-        MDCAT July session), <strong>subject</strong> is the discipline inside it (e.g. Physics,
-        Chemistry). Their titles are not meant to match. Pick bundle → subject → unit, then enter the
-        topic name.
+        Each dropdown is a different level: <strong>bundle</strong> is your{" "}
+        {profileBundleLabel(tenant)} (e.g. {examples.bundle}), <strong>subject</strong> is the
+        discipline or module inside it (e.g. {examples.subject}). Their titles are not meant to
+        match. Pick bundle → subject → unit, then enter the topic name.
       </p>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       {(bundleTitle || subjectTitle || unitTitle) && (
@@ -866,6 +876,9 @@ export default function AdminPage() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [bundlePriceEdit, setBundlePriceEdit] = useState(false);
+  const [tenant, setTenant] = useState<TenantFeatures | null>(null);
+  const mounted = useClientMounted();
+  const profileTenant = mounted ? tenant : null;
 
   useEffect(() => {
     const session = getSession();
@@ -879,6 +892,7 @@ export default function AdminPage() {
     }
     const institute = canManageInstitute(session);
     setManageStructure(institute);
+    setTenant(session.tenant ?? null);
 
     const load = institute
       ? coursesApi.bundles().then(setBundles)
@@ -991,9 +1005,13 @@ export default function AdminPage() {
         <p className="mt-1 text-slate-600">
           {manageStructure ? (
             <>
-              Set up your course tree (bundle → subject → unit → topic). Use the pencil to rename
-              structure; teachers use <span className="font-medium text-slate-700">Content</span> to
-              add lectures, notes, MCQs and flashcards. For a simple course, use one unit per subject.
+              Set up your course tree ({profileBundleLabel(profileTenant)} → subject → unit → topic).
+              Use the pencil to rename structure; teachers use{" "}
+              <span className="font-medium text-slate-700">Content</span> to add lectures, notes,
+              MCQs and flashcards.
+              {parseProductProfile(profileTenant?.productProfile) === "GeneralLms"
+                ? " For a simple course, one unit per subject is enough."
+                : " For a simple layout, use one unit per subject."}
             </>
           ) : (
             <>
@@ -1012,6 +1030,7 @@ export default function AdminPage() {
           <QuickAddTopic
             bundles={bundles}
             allowedSubjectIds={allowedSubjectIds}
+            tenant={profileTenant}
             onCreated={(topicId) => router.push(`/admin/topics/${topicId}`)}
           />
         )}
@@ -1034,10 +1053,12 @@ export default function AdminPage() {
             <p className="text-slate-500">Loading…</p>
           ) : bundles.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
-              <p className="font-medium text-slate-900">No course bundles yet</p>
+              <p className="font-medium text-slate-900">
+                No {profileBundleLabelPlural(profileTenant)} yet
+              </p>
               <p className="mt-1 text-sm text-slate-600">
                 {manageStructure
-                  ? "Follow the setup checklist to launch your institute, then add your first bundle below."
+                  ? `Add your first ${profileBundleLabel(profileTenant)} below, then expand it with subjects, units, and topics — or use Quick add topic once the tree exists.`
                   : "Your institute admin has not assigned any subjects to you yet."}
               </p>
               {manageStructure && (

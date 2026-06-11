@@ -703,20 +703,7 @@ export const adminApi = {
       body: JSON.stringify(b),
     }),
 
-  uploadFile: async (file: File, folder = "uploads") => {
-    const session = getSession();
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`${BASE_URL}/api/v1/admin/files?folder=${encodeURIComponent(folder)}`, {
-      method: "POST",
-      headers: session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {},
-      body: form,
-    });
-    if (!res.ok) {
-      await failResponse(res, "/api/v1/admin/files");
-    }
-    return (await res.json()) as { key: string; url: string };
-  },
+  uploadFile: uploadBrandingFile,
 
   // Live classes
   listLiveClasses: (
@@ -757,6 +744,8 @@ export const adminApi = {
       body: JSON.stringify({ subjectIds }),
     }),
   mySubjects: () => request<AssignedSubjectDto[]>("/api/v1/admin/my-subjects"),
+  listAssignableSubjects: () =>
+    request<AssignedSubjectDto[]>("/api/v1/admin/assignable-subjects"),
   myProfile: () => request<AdminProfileDto>("/api/v1/admin/me/profile"),
   subjectProgress: (subjectId: string) =>
     request<SubjectProgressDto>(`/api/v1/admin/subjects/${subjectId}/progress`),
@@ -1144,6 +1133,8 @@ export type TenantListItemDto = {
   plan: string;
   createdAt: string;
 };
+export type ProductProfile = "ExamPrep" | "GeneralLms" | "Both";
+
 export type TenantDetailDto = {
   id: string;
   name: string;
@@ -1151,6 +1142,7 @@ export type TenantDetailDto = {
   customDomain: string | null;
   status: string;
   plan: string;
+  productProfile: ProductProfile;
   liveClassesEnabled: boolean;
   zoomMode: string;
   paymentMode: string;
@@ -1182,16 +1174,37 @@ export type ResetInstituteAdminPasswordDto = {
   tempPassword: string;
 };
 
+async function uploadBrandingFile(file: File, folder = "uploads") {
+  const session = getSession();
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/api/v1/admin/files?folder=${encodeURIComponent(folder)}`, {
+    method: "POST",
+    headers: session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    await failResponse(res, "/api/v1/admin/files");
+  }
+  return (await res.json()) as { key: string; url: string };
+}
+
 export const superAdminApi = {
+  uploadFile: uploadBrandingFile,
   listTenants: () => request<TenantListItemDto[]>("/api/v1/superadmin/tenants"),
   getTenant: (id: string) => request<TenantDetailDto>(`/api/v1/superadmin/tenants/${id}`),
-  createTenant: (b: { name: string; slug: string; plan: string }) =>
-    post<TenantDetailDto>("/api/v1/superadmin/tenants", b),
+  createTenant: (b: {
+    name: string;
+    slug: string;
+    plan: string;
+    productProfile?: ProductProfile;
+  }) => post<TenantDetailDto>("/api/v1/superadmin/tenants", b),
   updateFlags: (
     id: string,
     b: {
       status: string;
       plan: string;
+      productProfile: ProductProfile;
       customDomain: string | null;
       liveClassesEnabled: boolean;
       zoomMode: string;

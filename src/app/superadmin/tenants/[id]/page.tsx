@@ -19,7 +19,6 @@ import {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SuperAdminShell } from "@/components/superadmin-shell";
 import {
-  adminApi,
   superAdminApi,
   type TenantDetailDto,
   type CreatedInstituteAdminDto,
@@ -28,6 +27,7 @@ import {
 } from "@/lib/api";
 import { getSession, isSuperAdmin } from "@/lib/auth";
 import { resolveAssetUrl } from "@/lib/assets";
+import { persistTenantSlug } from "@/lib/tenant";
 
 export default function TenantDetailPage() {
   const router = useRouter();
@@ -83,6 +83,7 @@ export default function TenantDetailPage() {
     ])
       .then(([t, b, a]) => {
         setTenant(t);
+        persistTenantSlug(t.slug);
         setAdmins(a);
         setBranding({
           displayName: b.displayName,
@@ -106,6 +107,7 @@ export default function TenantDetailPage() {
       const updated = await superAdminApi.updateFlags(id, {
         status: tenant.status,
         plan: tenant.plan,
+        productProfile: tenant.productProfile ?? "ExamPrep",
         customDomain: tenant.customDomain || null,
         liveClassesEnabled: tenant.liveClassesEnabled,
         zoomMode: tenant.zoomMode,
@@ -151,7 +153,7 @@ export default function TenantDetailPage() {
     setUploading(true);
     setError(null);
     try {
-      const result = await adminApi.uploadFile(file, "branding");
+      const result = await superAdminApi.uploadFile(file, "branding");
       setBranding((b) => ({ ...b, [field]: result.url }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -312,6 +314,26 @@ export default function TenantDetailPage() {
                   <option value="Pro">Pro</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">Billing label. MVP = current features. Pro = future premium tier.</p>
+              </div>
+              <div className="sm:col-span-2">
+                <label className={label}>Product profile</label>
+                <select
+                  value={tenant.productProfile ?? "ExamPrep"}
+                  onChange={(e) =>
+                    setTenant({
+                      ...tenant,
+                      productProfile: e.target.value as "ExamPrep" | "GeneralLms" | "Both",
+                    })
+                  }
+                  className={selectField}
+                >
+                  <option value="ExamPrep">Exam preparation (MDCAT / ECAT)</option>
+                  <option value="GeneralLms">General LMS (courses & quizzes)</option>
+                  <option value="Both">Both (academy + courses)</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Controls default menus and exam-prep modules (mocks, doubts, mistake diary). Re-login required for institute users to refresh session.
+                </p>
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-200">

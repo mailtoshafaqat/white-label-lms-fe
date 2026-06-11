@@ -17,14 +17,19 @@ function slugFromHost(host: string): string | null {
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const querySlug = request.nextUrl.searchParams.get("tenant");
-  const slug = (querySlug ?? slugFromHost(host) ?? DEFAULT_SLUG).toLowerCase();
+  const hostSlug = slugFromHost(host);
+  const slug = (querySlug ?? hostSlug)?.toLowerCase();
 
   const response = NextResponse.next();
-  response.cookies.set(SLUG_COOKIE, slug, {
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: "lax",
-  });
+  // Only persist tenant when explicitly provided (query or subdomain).
+  // Avoid overwriting a prior institute slug with the demo default on every request.
+  if (slug) {
+    response.cookies.set(SLUG_COOKIE, slug, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  }
   return response;
 }
 

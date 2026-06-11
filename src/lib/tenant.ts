@@ -16,9 +16,14 @@ export function resolveTenantSlug(searchParams?: URLSearchParams | null): string
   if (fromQuery) return fromQuery.toLowerCase();
 
   const fromCookie = getTenantSlugFromCookie();
+  const fromStorage = localStorage.getItem(SLUG_KEY);
+
+  // Prefer a remembered institute slug over the middleware demo default cookie.
+  if (fromCookie && fromCookie !== DEFAULT_SLUG) return fromCookie;
+  if (fromStorage) return fromStorage;
   if (fromCookie) return fromCookie;
 
-  return localStorage.getItem(SLUG_KEY) ?? DEFAULT_SLUG;
+  return DEFAULT_SLUG;
 }
 
 export function persistTenantSlug(slug: string) {

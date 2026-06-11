@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useEffect, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Mail, Copy, Check, KeyRound, Ban, UserCheck, Users, CalendarClock } from "lucide-react";
 import { StudentGuardiansPanel } from "@/components/student-guardians-panel";
@@ -41,8 +41,13 @@ function AdminStudentsContent() {
   const [guardianStudent, setGuardianStudent] = useState<StudentListItemDto | null>(null);
   const [enrollmentStudent, setEnrollmentStudent] = useState<StudentListItemDto | null>(null);
 
+  const fetchStudents = useCallback(
+    (params: Parameters<typeof adminApi.listStudents>[0]) => adminApi.listStudents(params),
+    []
+  );
+
   const list = usePagedList({
-    fetch: (params) => adminApi.listStudents(params),
+    fetch: fetchStudents,
     syncUrl: true,
   });
 

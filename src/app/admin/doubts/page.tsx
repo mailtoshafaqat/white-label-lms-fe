@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MessageCircleQuestion } from "lucide-react";
 import { AdminNav } from "@/components/admin-nav";
@@ -14,14 +14,30 @@ import { getSession, isAdmin } from "@/lib/auth";
 
 type StatusFilter = "open" | "resolved" | "all";
 
+function parseStatusFilter(raw: string | null): StatusFilter {
+  if (raw === "resolved" || raw === "all" || raw === "open") return raw;
+  return "open";
+}
+
 function AdminDoubtsContent() {
   const router = useRouter();
-  const [filter, setFilter] = useState<StatusFilter>("open");
+  const searchParams = useSearchParams();
+  const [filter, setFilter] = useState<StatusFilter>(() =>
+    parseStatusFilter(searchParams.get("status"))
+  );
+
+  const listExtras = useMemo(() => ({ status: filter }), [filter]);
+
+  const fetchDoubts = useCallback(
+    (params: Parameters<typeof doubtsApi.adminList>[0]) =>
+      doubtsApi.adminList({ ...params, status: filter }),
+    [filter]
+  );
 
   const list = usePagedList({
-    fetch: (params) => doubtsApi.adminList({ ...params, status: filter }),
+    fetch: fetchDoubts,
     syncUrl: true,
-    extraParams: { status: filter },
+    extraParams: listExtras,
   });
 
   useEffect(() => {

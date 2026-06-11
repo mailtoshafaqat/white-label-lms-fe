@@ -1,10 +1,18 @@
 // Prototype token storage. For production, move tokens to httpOnly cookies.
+export type ProductProfile = "ExamPrep" | "GeneralLms" | "Both";
+
 export type TenantFeatures = {
   tenantId: string;
   tenantName: string;
   slug: string;
   status: string;
   plan: string;
+  productProfile: ProductProfile;
+  mockExamsEnabled: boolean;
+  unitPyqTestsEnabled: boolean;
+  mistakeDiaryEnabled: boolean;
+  doubtsEnabled: boolean;
+  syllabusMentorEnabled: boolean;
   liveClassesEnabled: boolean;
   zoomMode: string;
   paymentMode: string;
