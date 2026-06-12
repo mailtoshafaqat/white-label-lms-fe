@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Settings, Sparkles, Users } from "lucide-react";
 import { SuperAdminShell } from "@/components/superadmin-shell";
 import { superAdminApi, type ProductProfile, type TenantListItemDto } from "@/lib/api";
+import { formatBytes } from "@/lib/format-bytes";
 import { PRODUCT_PROFILE_LABELS } from "@/lib/product-profile";
 import { getSession, isSuperAdmin } from "@/lib/auth";
 import { trialListBadge } from "@/lib/trial";
@@ -65,6 +66,10 @@ export default function SuperAdminPage() {
           plan: t.plan,
           trialEndsAt: t.trialEndsAt,
           createdAt: t.createdAt,
+          storageUsedBytes: 0,
+          storageQuotaBytes: t.plan === "Pro" ? 107374182400 : 21474836480,
+          storageUsedPercent: 0,
+          storageQuotaBypass: false,
         },
         ...prev,
       ]);
@@ -228,6 +233,25 @@ export default function SuperAdminPage() {
                     <p className="mt-1 text-sm text-slate-400">
                       <span className="font-mono text-indigo-300">{t.slug}</span> · created{" "}
                       {new Date(t.createdAt).toLocaleDateString()}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Storage: {formatBytes(t.storageUsedBytes)} / {formatBytes(t.storageQuotaBytes)}
+                      {t.storageUsedPercent >= 80 && (
+                        <span
+                          className={`ml-2 rounded px-1.5 py-0.5 text-xs ${
+                            t.storageUsedPercent >= 100
+                              ? "bg-red-500/20 text-red-200"
+                              : "bg-amber-500/20 text-amber-200"
+                          }`}
+                        >
+                          {t.storageUsedPercent}%
+                        </span>
+                      )}
+                      {t.storageQuotaBypass && (
+                        <span className="ml-2 rounded bg-indigo-500/20 px-1.5 py-0.5 text-xs text-indigo-200">
+                          bypass
+                        </span>
+                      )}
                     </p>
                   </div>
                   <Link

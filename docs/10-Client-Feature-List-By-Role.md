@@ -68,6 +68,7 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Feature flags** | Live classes, Syllabus Mentor, self-enrollment, admin student creation, MCQ bulk import, bundle pricing edit, Zoom mode, payment mode |
 | **Institute admins** | Provision owner accounts; reset passwords |
 | **Branding override** | Platform-level branding for any tenant |
+| **Storage quota** | Per-tenant usage vs plan limit (MVP 20 GB, Pro 100 GB); override quota or enable bypass for ops |
 | **Checklist** | Internal launch checklist for platform staff |
 
 ### Typical URLs
@@ -103,7 +104,7 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 
 | Feature | Description |
 |---------|-------------|
-| **Admin home** | KPIs (students, teachers, courses/batches, doubts), quick actions, live class snapshot |
+| **Admin home** | KPIs (students, teachers, courses/batches, doubts), **storage usage** (plan quota, 80% warning, block at 100%), quick actions, live class snapshot |
 | **Setup wizard** | Guided first-time setup |
 | **Launch checklist** | Step-by-step institute onboarding (browser-saved progress) |
 | **Progress** | Institute-wide student progress by subject — KPIs, 7-day trend, score distribution, leaderboard, per-student drill-down |
@@ -308,11 +309,28 @@ Full policy: [09-Customization-Policy.md](./09-Customization-Policy.md).
 
 ## Planned / not in current release
 
+Items below are **not in the June 2026 release**. Priority and fit are recommendations for the next roadmap discussion.
+
+### Client-selected backlog (General LMS + Academy)
+
+| Feature | Best for | Recommended priority | Notes |
+|---------|----------|----------------------|-------|
+| **Video watch progress %** | Both | **Shipped (Jun 2026)** | Student `/videos` + topic player; admin cohort analytics includes video counts. |
+| **Certificates on completion** | Both | **Shipped (Phase A)** | Per-tenant template (title, colors, logo/background/signature), PDF + QR public verify at `/verify/{number}?tenant=slug`. |
+| **MCQ search in question bank** | ExamPrep / Academy | **Shipped (Jun 2026)** | `/admin/question-bank` — search question stem text. |
+| **Full analytics (cohort, export)** | Both | **Shipped (Jun 2026)** | `/admin/analytics` — cohort overview + CSV export. |
+| **Course reviews / ratings** | General LMS · optional for Academy | **Medium** | Valuable for self-enroll course catalog and trust; less critical when enrollment is institute-managed. |
+| **Discussions / forums** | General LMS · partial Academy overlap | **Medium** | Academy already has **doubts (Ask Teacher)** per topic. Forums add peer discussion and unit-wide threads — decide if doubts are enough first. |
+| **Proctoring / anti-cheat (mocks)** | ExamPrep / Academy | **Medium** | Important for high-stakes mock exams; complex to build in-house. Consider integrate-first (Proctorio, etc.) before custom. |
+| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Partial (Jun 2026)** | **Storage quota** shipped (per-tenant limits, usage tracking, SuperAdmin override/bypass). Broader billing/metering (seats, API, payments) still roadmap. |
+| **Tenant API keys / webhooks** | Platform + enterprise institutes | **Medium–Low** | Webhooks for enrollments, completions, payments; API keys for CRM/ERP sync. Defer until core LMS gaps above are closed unless a client requires it. |
+
+### Other roadmap (previously listed)
+
 - Native mobile apps (iOS / Android)
-- In-app payments and checkout
+- In-app payments and checkout (student checkout — separate from platform tenant billing)
 - Parent portal (guardian email reports exist; no parent login yet)
-- Advanced institute analytics (cohort exports, custom reports)
-- Dedicated MCQ full-text search (search covers topic/subject titles today)
+- **Configurable file storage (pending — discuss)** — `appsettings` provider switch for video and PDF/DOC uploads: **Local disk** (current MVP), **Cloudflare R2**, or **Azure Blob**. Today uploads work on local disk only (`IFileStorage` abstraction exists; R2/Azure implementations and `FileStorage` config section not built yet).
 
 ---
 

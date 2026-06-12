@@ -44,6 +44,9 @@ export function getAdminNavItems(session: AuthSession): AdminNavItem[] {
       { href: "/admin/subjects", label: "Subject catalog", group: "courses" },
       { href: "/admin", label: "Content", group: "courses" },
       { href: "/admin/progress", label: "Progress", group: "courses" },
+      { href: "/admin/analytics", label: "Analytics", group: "courses" },
+      { href: "/admin/question-bank", label: "Question bank", group: "courses" },
+      { href: "/admin/certificates", label: "Certificates", group: "courses" },
     ];
     const coreAfter: AdminNavItem[] = [
       { href: "/admin/teachers", label: "Teachers", group: "core" },
@@ -57,6 +60,9 @@ export function getAdminNavItems(session: AuthSession): AdminNavItem[] {
     { href: "/admin/home", label: "Home", group: "core" },
     { href: "/admin", label: "Content", group: "courses" },
     { href: "/admin/progress", label: "Progress", group: "courses" },
+    { href: "/admin/analytics", label: "Analytics", group: "courses" },
+    { href: "/admin/question-bank", label: "Question bank", group: "courses" },
+    { href: "/admin/certificates", label: "Certificates", group: "courses" },
     ...academy,
     { href: "/admin/profile", label: "Profile", group: "core" },
   ];

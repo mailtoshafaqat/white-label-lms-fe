@@ -7,7 +7,7 @@ import { ArrowLeft, PlayCircle, Search, Video } from "lucide-react";
 import { BrandHeader } from "@/components/brand-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { contentApi, type VideoLibraryItemDto } from "@/lib/api";
+import { contentApi, progressApi, type VideoLibraryItemDto } from "@/lib/api";
 import { ProtectedVideo } from "@/components/protected-video";
 import { getSession } from "@/lib/auth";
 import { getTenantSlug, loadAndApplyBranding, type BrandingDto } from "@/lib/branding";
@@ -26,6 +26,9 @@ export default function VideoLibraryPage() {
   const [videosOnlyStudent, setVideosOnlyStudent] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<VideoLibraryItemDto | null>(null);
+  const [progressByLecture, setProgressByLecture] = useState<Record<string, number>>({});
+  const [activeProgress, setActiveProgress] = useState(0);
+  const [activePosition, setActivePosition] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,10 +41,24 @@ export default function VideoLibraryPage() {
     loadAndApplyBranding(slug).then(setBranding);
     contentApi
       .videoLibrary()
-      .then((lib) => {
+      .then(async (lib) => {
         setItems(lib.items);
         setVideosOnlyStudent(lib.videosOnlyStudent);
-        if (lib.items.length > 0) setActive(lib.items[0]);
+        if (lib.items.length > 0) {
+          setActive(lib.items[0]);
+          const rows = await progressApi.lectureProgressBulk(lib.items.map((i) => i.lectureId));
+          const map: Record<string, number> = {};
+          const pos: Record<string, number> = {};
+          for (const row of rows) {
+            map[row.lectureId] = row.progressPercent;
+            pos[row.lectureId] = row.positionSec;
+          }
+          setProgressByLecture(map);
+          if (lib.items[0]) {
+            setActiveProgress(map[lib.items[0].lectureId] ?? 0);
+            setActivePosition(pos[lib.items[0].lectureId] ?? 0);
+          }
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load videos"))
       .finally(() => setLoading(false));
@@ -125,8 +142,18 @@ export default function VideoLibraryPage() {
                       key={active.lectureId}
                       src={active.playUrl}
                       title={active.lectureTitle}
+                      lectureId={active.lectureId}
+                      topicId={active.topicId}
+                      initialPositionSec={activePosition}
+                      onProgressChange={(p) => {
+                        setActiveProgress(p);
+                        setProgressByLecture((prev) => ({ ...prev, [active.lectureId]: p }));
+                      }}
                       className="aspect-video w-full rounded-md bg-black"
                     />
+                    {activeProgress > 0 && (
+                      <p className="mt-2 text-xs text-slate-500">{activeProgress}% complete</p>
+                    )}
                   </CardContent>
                 </Card>
               ) : null}
@@ -150,7 +177,14 @@ export default function VideoLibraryPage() {
                         <button
                           key={v.lectureId}
                           type="button"
-                          onClick={() => setActive(v)}
+                          onClick={() => {
+                            setActive(v);
+                            setActiveProgress(progressByLecture[v.lectureId] ?? 0);
+                            progressApi
+                              .lectureProgress(v.lectureId)
+                              .then((p) => setActivePosition(p.positionSec))
+                              .catch(() => setActivePosition(0));
+                          }}
                           className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition ${
                             active?.lectureId === v.lectureId
                               ? "border-[var(--brand)]/40 bg-[var(--brand)]/5"
@@ -162,9 +196,13 @@ export default function VideoLibraryPage() {
                             <p className="truncate font-medium text-slate-800">{v.lectureTitle}</p>
                             <p className="truncate text-xs text-slate-500">{v.topicTitle}</p>
                           </div>
-                          {v.durationSec > 0 && (
-                            <span className="shrink-0 text-xs text-slate-400">{formatDuration(v.durationSec)}</span>
-                          )}
+                          <span className="shrink-0 text-xs text-slate-400">
+                            {(progressByLecture[v.lectureId] ?? 0) > 0
+                              ? `${progressByLecture[v.lectureId]}%`
+                              : v.durationSec > 0
+                                ? formatDuration(v.durationSec)
+                                : ""}
+                          </span>
                         </button>
                       ))}
                     </div>

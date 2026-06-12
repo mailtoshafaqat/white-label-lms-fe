@@ -196,8 +196,23 @@ Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against
 
 ## Not yet built (roadmap)
 
+### Client-selected (General LMS + Academy)
+
+| Item | Profiles | Priority |
+|------|----------|----------|
+| Video watch progress % | Both | High |
+| Certificates on completion | Both | High |
+| MCQ search in question bank | ExamPrep | High |
+| Full analytics (cohort, export) | Both | High |
+| Course reviews / ratings | GeneralLms (+ optional Academy) | Medium |
+| Discussions / forums | GeneralLms; overlaps with doubts in ExamPrep | Medium |
+| Proctoring / anti-cheat mocks | ExamPrep | Medium |
+| Usage metering / billing tenants | Platform SaaS | Medium |
+| Tenant API keys / webhooks | Platform / enterprise | Medium–Low |
+
+### Other
+
 - Mobile apps  
-- Payments & parent portal  
-- Full institute analytics dashboard  
+- Payments & parent portal (student checkout)  
 - Bookmarks for AI mentor answers (proposal only)  
-- Dedicated MCQ full-text search (search is topic/subject titles today)
+- **Configurable file storage (pending — discuss)** — `appsettings.json` `FileStorage` section with provider `Local` | `R2` | `Azure` for lecture video and note (PDF/DOC) uploads. MVP uses `LocalDiskFileStorage` only; swap via DI not implemented.

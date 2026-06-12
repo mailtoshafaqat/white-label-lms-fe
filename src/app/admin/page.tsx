@@ -1068,6 +1068,7 @@ export default function AdminPage() {
                 title: d.title,
                 subjectCount: d.subjects.length,
                 price: 0,
+                videosOnly: false,
               }))
             );
           });

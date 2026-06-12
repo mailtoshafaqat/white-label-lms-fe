@@ -19,13 +19,16 @@ import {
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SuperAdminShell } from "@/components/superadmin-shell";
+import { StorageUsageCard } from "@/components/storage-usage-card";
 import {
   superAdminApi,
   type TenantDetailDto,
   type CreatedInstituteAdminDto,
   type InstituteAdminListItemDto,
   type ResetInstituteAdminPasswordDto,
+  type TenantStorageUsageDto,
 } from "@/lib/api";
+import { formatBytes } from "@/lib/format-bytes";
 import { getSession, isSuperAdmin } from "@/lib/auth";
 import { resolveAssetUrl } from "@/lib/assets";
 import { persistTenantSlug } from "@/lib/tenant";
@@ -63,6 +66,11 @@ export default function TenantDetailPage() {
     supportEmail: "",
     mentorDisplayName: "",
   });
+  const [storage, setStorage] = useState<TenantStorageUsageDto | null>(null);
+  const [storageBypass, setStorageBypass] = useState(false);
+  const [storageOverrideGb, setStorageOverrideGb] = useState("");
+  const [savingStorage, setSavingStorage] = useState(false);
+  const [storageSaved, setStorageSaved] = useState(false);
 
   async function loadAdmins() {
     const list = await superAdminApi.listInstituteAdmins(id);
@@ -83,8 +91,9 @@ export default function TenantDetailPage() {
       superAdminApi.getTenant(id),
       superAdminApi.getTenantBranding(id),
       superAdminApi.listInstituteAdmins(id),
+      superAdminApi.listTenantStorage(),
     ])
-      .then(([t, b, a]) => {
+      .then(([t, b, a, storageRows]) => {
         setTenant(t);
         persistTenantSlug(t.slug);
         setAdmins(a);
@@ -96,6 +105,10 @@ export default function TenantDetailPage() {
           supportEmail: b.supportEmail ?? "",
           mentorDisplayName: b.mentorDisplayName ?? "",
         });
+        const row = storageRows.find((s) => s.tenantId === id) ?? null;
+        setStorage(row);
+        setStorageBypass(row?.quotaBypassEnabled ?? false);
+        setStorageOverrideGb("");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -129,6 +142,32 @@ export default function TenantDetailPage() {
       setError(err instanceof Error ? err.message : "Could not save");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveStorage(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingStorage(true);
+    setError(null);
+    try {
+      const overrideGb = storageOverrideGb.trim();
+      const parsedGb = overrideGb === "" ? null : parseFloat(overrideGb);
+      const quotaBytesOverride =
+        parsedGb === null ? null : Math.round(parsedGb * 1024 * 1024 * 1024);
+      if (parsedGb !== null && (Number.isNaN(parsedGb) || parsedGb <= 0)) {
+        throw new Error("Quota override must be a positive number of GB.");
+      }
+      const updated = await superAdminApi.updateTenantStorage(id, {
+        quotaBytesOverride,
+        quotaBypass: storageBypass,
+      });
+      setStorage(updated);
+      setStorageSaved(true);
+      setTimeout(() => setStorageSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save storage settings");
+    } finally {
+      setSavingStorage(false);
     }
   }
 
@@ -304,6 +343,46 @@ export default function TenantDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {storage && (
+          <section className={`${card} lg:col-span-2`}>
+            <h2 className="text-lg font-semibold text-white">Storage quota</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Plan default: MVP 20 GB · Pro 100 GB. Override or bypass for platform ops.
+            </p>
+            <div className="mt-4 max-w-xl">
+              <StorageUsageCard usage={storage} />
+            </div>
+            <form className="mt-4 space-y-4" onSubmit={saveStorage}>
+              <div>
+                <label className={label}>Quota override (GB, optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={storageOverrideGb}
+                  onChange={(e) => setStorageOverrideGb(e.target.value)}
+                  placeholder={`Default ${formatBytes(storage.quotaBytes)}`}
+                  className={field}
+                />
+                <p className="mt-1 text-xs text-slate-500">Leave empty to use plan default.</p>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={storageBypass}
+                  onChange={(e) => setStorageBypass(e.target.checked)}
+                  className="rounded border-white/20 bg-white/5"
+                />
+                Allow uploads above quota (bypass)
+              </label>
+              <button type="submit" disabled={savingStorage} className={btn}>
+                <Save className="h-4 w-4" />
+                {savingStorage ? "Saving…" : storageSaved ? "Saved" : "Save storage settings"}
+              </button>
+            </form>
+          </section>
+        )}
+
         <section className={card}>
           <h2 className="text-lg font-semibold text-white">Feature flags</h2>
           <p className="mt-1 text-sm text-slate-400">What this institute can use. Institute admin handles day-to-day config.</p>

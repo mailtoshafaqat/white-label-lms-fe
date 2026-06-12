@@ -21,6 +21,7 @@ type ApiErrorBody = {
   error?: string;
   title?: string;
   traceId?: string;
+  usage?: TenantStorageUsageDto;
 };
 
 async function parseErrorBody(res: Response): Promise<{ message: string; traceId?: string }> {
@@ -85,6 +86,32 @@ async function request<T>(path: string, options: ApiRequestOptions = {}): Promis
 
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+async function downloadAuthedFile(path: string, filename: string) {
+  const session = getSession();
+  const headers: Record<string, string> = {};
+  if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
+  const tenantSlug =
+    session?.tenant?.slug ??
+    (typeof window !== "undefined" ? localStorage.getItem("lms.tenantSlug") : null);
+  if (tenantSlug) headers["X-Tenant-Slug"] = tenantSlug;
+  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  if (!res.ok) await failResponse(res, path);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export const publicApi = {
+  verifyCertificate: (certificateNumber: string, tenant: string) =>
+    request<CertificateVerifyDto>(
+      `/api/v1/public/certificates/verify/${encodeURIComponent(certificateNumber)}?tenant=${encodeURIComponent(tenant)}`
+    ),
+};
 
 export const authApi = {
   login: (body: { email: string; password: string }) =>
@@ -395,10 +422,77 @@ export type DashboardOverviewDto = {
   weakestSubject: SubjectAccuracyDto | null;
 };
 
+export type LectureProgressDto = {
+  lectureId: string;
+  topicId: string;
+  progressPercent: number;
+  positionSec: number;
+  lastWatchedAt: string;
+};
+
 export const progressApi = {
   myGrades: () => request<GradeDto[]>(`/api/v1/me/grades`),
   leaderboard: (take = 10) => request<LeaderboardRowDto[]>(`/api/v1/leaderboard?take=${take}`),
   dashboard: () => request<DashboardOverviewDto>(`/api/v1/me/dashboard`),
+  saveLectureProgress: (
+    lectureId: string,
+    body: { progressPercent: number; positionSec: number; topicId?: string }
+  ) =>
+    request<LectureProgressDto>(`/api/v1/me/lectures/${lectureId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  lectureProgress: (lectureId: string) =>
+    request<LectureProgressDto>(`/api/v1/me/lectures/${lectureId}/progress`),
+  lectureProgressBulk: (lectureIds: string[]) => {
+    if (lectureIds.length === 0) return Promise.resolve([] as LectureProgressDto[]);
+    const q = lectureIds.map(encodeURIComponent).join(",");
+    return request<LectureProgressDto[]>(`/api/v1/me/lectures/progress?lectureIds=${q}`);
+  },
+  myCertificates: () => request<CertificateDto[]>("/api/v1/me/certificates"),
+  downloadMyCertificatePdf: (id: string) => downloadAuthedFile(`/api/v1/me/certificates/${id}/pdf`, `certificate-${id}.pdf`),
+};
+
+export type CertificateDto = {
+  id: string;
+  bundleId: string;
+  bundleTitle: string;
+  certificateNumber: string;
+  issuedAt: string;
+  verifyUrl: string | null;
+};
+
+export type CertificateTemplateDto = {
+  title: string;
+  subtitle: string;
+  backgroundUrl: string | null;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  signatureLabel: string;
+  primaryColor: string;
+  showQrCode: boolean;
+  enabled: boolean;
+  version: number;
+};
+
+export type CertificateVerifyDto = {
+  valid: boolean;
+  certificateNumber: string;
+  studentName: string;
+  courseName: string;
+  instituteName: string;
+  issuedAt: string;
+  tenantSlug: string | null;
+};
+
+export type AdminCertificateDto = {
+  id: string;
+  userId: string;
+  studentName: string;
+  bundleId: string;
+  bundleTitle: string;
+  certificateNumber: string;
+  issuedAt: string;
 };
 
 export type EnrollmentDto = {
@@ -536,6 +630,37 @@ export type McqImportResultDto = {
   questions: AdminQuestionDto[];
 };
 
+export type QuestionSearchHitDto = {
+  id: string;
+  stem: string;
+  topicId: string | null;
+  topicTitle: string | null;
+  subjectTitle: string | null;
+  bundleTitle: string | null;
+  order: number;
+};
+
+export type CohortAnalyticsOverviewDto = {
+  bundleId: string;
+  bundleTitle: string;
+  enrolledStudents: number;
+  avgCompletionPercent: number;
+  avgQuizAccuracy: number;
+  totalCertificatesIssued: number;
+};
+
+export type CohortStudentRowDto = {
+  userId: string;
+  studentName: string;
+  topicsCompleted: number;
+  topicsTotal: number;
+  completionPercent: number;
+  avgQuizAccuracy: number;
+  videosWatched: number;
+  videosTotal: number;
+  lastActiveAt: string | null;
+};
+
 export type AdminQuizDto = {
   id: string;
   topicId: string | null;
@@ -630,6 +755,48 @@ export const adminApi = {
   quiz: (topicId: string) => request<AdminQuizDto>(`/api/v1/admin/topics/${topicId}/quiz`),
   quizAnalytics: (topicId: string) =>
     request<QuizAnalyticsDto>(`/api/v1/admin/topics/${topicId}/quiz/analytics`),
+  searchQuestions: (q: string, page = 1, pageSize = 20) =>
+    request<PagedResult<QuestionSearchHitDto>>(
+      `/api/v1/admin/questions/search?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`
+    ),
+  cohortAnalytics: (bundleId: string, subjectId?: string) => {
+    const params = new URLSearchParams({ bundleId });
+    if (subjectId) params.set("subjectId", subjectId);
+    return request<CohortAnalyticsOverviewDto>(`/api/v1/admin/analytics/cohort?${params}`);
+  },
+  cohortStudents: (bundleId: string, subjectId?: string) => {
+    const params = new URLSearchParams({ bundleId });
+    if (subjectId) params.set("subjectId", subjectId);
+    return request<CohortStudentRowDto[]>(`/api/v1/admin/analytics/cohort/students?${params}`);
+  },
+  cohortExportUrl: (bundleId: string, subjectId?: string) => {
+    const params = new URLSearchParams({ bundleId });
+    if (subjectId) params.set("subjectId", subjectId);
+    return `${BASE_URL}/api/v1/admin/analytics/cohort/export?${params}`;
+  },
+  listCertificates: (bundleId?: string, page = 1, pageSize = 20) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (bundleId) params.set("bundleId", bundleId);
+    return request<PagedResult<AdminCertificateDto>>(`/api/v1/admin/certificates?${params}`);
+  },
+  downloadCertificatePdf: (id: string) =>
+    downloadAuthedFile(`/api/v1/admin/certificates/${id}/pdf`, `certificate-${id}.pdf`),
+  getCertificateTemplate: () => request<CertificateTemplateDto>("/api/v1/admin/certificate-template"),
+  saveCertificateTemplate: (b: {
+    title: string;
+    subtitle: string;
+    backgroundUrl: string | null;
+    logoUrl: string | null;
+    signatureUrl: string | null;
+    signatureLabel: string;
+    primaryColor: string;
+    showQrCode: boolean;
+    enabled: boolean;
+  }) =>
+    request<CertificateTemplateDto>("/api/v1/admin/certificate-template", {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
   addQuestion: (
     topicId: string,
     b: {
@@ -909,6 +1076,7 @@ export const adminApi = {
   createLibraryUnit: (definitionId: string, b: { title: string; order: number }) =>
     post<UnitDto>(`/api/v1/admin/subject-definitions/${definitionId}/library-units`, b),
   myProfile: () => request<AdminProfileDto>("/api/v1/admin/me/profile"),
+  storageUsage: () => request<TenantStorageUsageDto>("/api/v1/admin/storage"),
   subjectProgress: (subjectId: string) =>
     request<SubjectProgressDto>(`/api/v1/admin/subjects/${subjectId}/progress`),
   studentDetail: (subjectId: string, userId: string) =>
@@ -1320,6 +1488,20 @@ export type UpdateEmailSettingsRequest = {
 };
 
 // ----- SuperAdmin (platform / tenants) -----
+export type StorageWarningLevel = "Ok" | "Warning" | "Full" | "Blocked";
+
+export type TenantStorageUsageDto = {
+  tenantId: string;
+  tenantName: string | null;
+  plan: string;
+  usedBytes: number;
+  quotaBytes: number;
+  usedPercent: number;
+  warningLevel: StorageWarningLevel;
+  quotaBypassEnabled: boolean;
+  uploadsBlocked: boolean;
+};
+
 export type TenantListItemDto = {
   id: string;
   name: string;
@@ -1328,6 +1510,10 @@ export type TenantListItemDto = {
   plan: string;
   trialEndsAt: string | null;
   createdAt: string;
+  storageUsedBytes: number;
+  storageQuotaBytes: number;
+  storageUsedPercent: number;
+  storageQuotaBypass: boolean;
 };
 export type ProductProfile = "ExamPrep" | "GeneralLms" | "Both";
 
@@ -1375,20 +1561,51 @@ async function uploadBrandingFile(file: File, folder = "uploads") {
   const session = getSession();
   const form = new FormData();
   form.append("file", file);
+  const tenantSlug =
+    session?.tenant?.slug ??
+    (typeof window !== "undefined" ? localStorage.getItem("lms.tenantSlug") : null);
+  const headers: Record<string, string> = {};
+  if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
+  if (tenantSlug) headers["X-Tenant-Slug"] = tenantSlug;
   const res = await fetch(`${BASE_URL}/api/v1/admin/files?folder=${encodeURIComponent(folder)}`, {
     method: "POST",
-    headers: session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {},
+    headers,
     body: form,
   });
   if (!res.ok) {
+    if (res.status === 413) {
+      let message = "Storage limit reached. Delete old files or contact your platform provider.";
+      try {
+        const body = (await res.json()) as ApiErrorBody;
+        if (body.error) message = body.error;
+      } catch {
+        /* ignore */
+      }
+      notifyApiError(message);
+      throw new ApiError(413, message);
+    }
     await failResponse(res, "/api/v1/admin/files");
   }
-  return (await res.json()) as { key: string; url: string };
+  return (await res.json()) as {
+    key: string;
+    url: string;
+    storage?: TenantStorageUsageDto;
+  };
 }
 
 export const superAdminApi = {
   uploadFile: uploadBrandingFile,
   listTenants: () => request<TenantListItemDto[]>("/api/v1/superadmin/tenants"),
+  listTenantStorage: () =>
+    request<TenantStorageUsageDto[]>("/api/v1/superadmin/tenants/storage"),
+  updateTenantStorage: (
+    id: string,
+    b: { quotaBytesOverride: number | null; quotaBypass: boolean }
+  ) =>
+    request<TenantStorageUsageDto>(`/api/v1/superadmin/tenants/${id}/storage`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
   getTenant: (id: string) => request<TenantDetailDto>(`/api/v1/superadmin/tenants/${id}`),
   createTenant: (b: {
     name: string;

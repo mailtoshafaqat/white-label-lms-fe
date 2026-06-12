@@ -6,7 +6,13 @@ import Link from "next/link";
 import { ArrowLeft, FileText, ClipboardList, Layers, Lock, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { contentApi, enrollmentApi, type LectureDto, type TopicContentDto } from "@/lib/api";
+import {
+  contentApi,
+  enrollmentApi,
+  progressApi,
+  type LectureDto,
+  type TopicContentDto,
+} from "@/lib/api";
 import { ProtectedVideo } from "@/components/protected-video";
 import { authenticatedMediaUrl } from "@/lib/media-url";
 import { getSession } from "@/lib/auth";
@@ -15,7 +21,21 @@ import { MentorPanel } from "@/components/mentor-panel";
 import { BookmarkButton } from "@/components/bookmark-button";
 import { isVideosOnlyStudent } from "@/lib/student-access";
 
-function LecturePlayer({ lecture }: { lecture: LectureDto }) {
+function LecturePlayer({ lecture, topicId }: { lecture: LectureDto; topicId: string }) {
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [initialPosition, setInitialPosition] = useState(0);
+
+  useEffect(() => {
+    if (!lecture.id) return;
+    progressApi
+      .lectureProgress(lecture.id)
+      .then((p) => {
+        setProgressPercent(p.progressPercent);
+        setInitialPosition(p.positionSec);
+      })
+      .catch(() => {});
+  }, [lecture.id]);
+
   const slug = getTenantSlug();
   const loginUrl = `/login?tenant=${encodeURIComponent(slug)}`;
 
@@ -45,12 +65,29 @@ function LecturePlayer({ lecture }: { lecture: LectureDto }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{lecture.title}</CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>{lecture.title}</CardTitle>
+          {progressPercent > 0 && (
+            <span className="shrink-0 text-xs font-medium text-slate-500">{progressPercent}% watched</span>
+          )}
+        </div>
+        {progressPercent > 0 && progressPercent < 100 && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-[var(--brand)]"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <ProtectedVideo
           src={lecture.url}
           title={lecture.title}
+          lectureId={lecture.id}
+          topicId={topicId}
+          initialPositionSec={initialPosition}
+          onProgressChange={setProgressPercent}
           className="aspect-video w-full rounded-md bg-black"
         />
       </CardContent>
@@ -125,7 +162,7 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
             {lectures.length > 0 ? (
               <div className="space-y-4">
                 {lectures.map((lecture) => (
-                  <LecturePlayer key={lecture.id} lecture={lecture} />
+                  <LecturePlayer key={lecture.id} lecture={lecture} topicId={id} />
                 ))}
               </div>
             ) : (

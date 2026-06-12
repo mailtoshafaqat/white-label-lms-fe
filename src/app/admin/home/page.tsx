@@ -19,11 +19,13 @@ import {
   Trophy,
   Calendar,
   ArrowRight,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
 import { LiveClassActions } from "@/components/live-class-actions";
+import { StorageUsageCard } from "@/components/storage-usage-card";
 import {
   adminApi,
   coursesApi,
@@ -31,6 +33,7 @@ import {
   type AdminLiveClassDto,
   type AssignedSubjectDto,
   type DoubtThreadSummaryDto,
+  type TenantStorageUsageDto,
 } from "@/lib/api";
 import {
   getSession,
@@ -40,6 +43,7 @@ import {
   type AuthSession,
 } from "@/lib/auth";
 import { fetchBranding, getTenantSlug, type BrandingDto } from "@/lib/branding";
+import { formatBytes } from "@/lib/format-bytes";
 import {
   hasDoubts,
   hasMockExams,
@@ -169,6 +173,7 @@ function InstituteAdminHome({ session, name }: { session: AuthSession; name: str
   const [liveNow, setLiveNow] = useState<AdminLiveClassDto[]>([]);
   const [upcoming, setUpcoming] = useState<AdminLiveClassDto[]>([]);
   const [checklistAuto, setChecklistAuto] = useState<InstituteChecklistAutoState | null>(null);
+  const [storage, setStorage] = useState<TenantStorageUsageDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +189,7 @@ function InstituteAdminHome({ session, name }: { session: AuthSession; name: str
       adminApi.listTeachers({ page: 1, pageSize: 1 }).then((r) => setTeacherCount(r.total)),
       coursesApi.bundles().then((b) => setBundleCount(b.length)),
       fetchInstituteChecklistAuto().then(setChecklistAuto),
+      adminApi.storageUsage().then(setStorage),
     ];
     if (hasDoubts(tenant)) {
       loads.push(
@@ -206,6 +212,12 @@ function InstituteAdminHome({ session, name }: { session: AuthSession; name: str
   const checklist = checklistProgress(checklistAuto);
   const trialExpired = isTrialExpired(tenant?.status, tenant?.trialEndsAt, tenant?.trialExpired);
   const trialDays = tenant?.trialDaysRemaining;
+  const storageTone =
+    storage?.uploadsBlocked || storage?.warningLevel === "Full" || storage?.warningLevel === "Blocked"
+      ? "danger"
+      : storage?.warningLevel === "Warning"
+        ? "warning"
+        : "ok";
 
   const quickActions = useMemo(() => {
     const items = [
@@ -263,11 +275,47 @@ function InstituteAdminHome({ session, name }: { session: AuthSession; name: str
               <p className="text-lg font-bold leading-none">{checklist.pct}%</p>
               <p className="text-xs text-white/70">setup complete</p>
             </div>
+            {storage && (
+              <div
+                className={`rounded-xl px-4 py-2.5 ring-1 backdrop-blur-sm ${
+                  storageTone === "danger"
+                    ? "bg-red-500/25 ring-red-300/40"
+                    : storageTone === "warning"
+                      ? "bg-amber-500/25 ring-amber-300/40"
+                      : "bg-white/10 ring-white/20"
+                }`}
+              >
+                <p className="text-lg font-bold leading-none">
+                  {formatBytes(storage.usedBytes)} / {formatBytes(storage.quotaBytes)}
+                </p>
+                <p className="flex items-center gap-1 text-xs text-white/70">
+                  <HardDrive className="h-3 w-3" />
+                  Storage
+                  {storage.quotaBypassEnabled && " (bypass)"}
+                </p>
+              </div>
+            )}
           </>
         }
       />
 
+      {storage && storageTone !== "ok" && (
+        <p
+          className={`rounded-lg border p-3 text-sm ${
+            storageTone === "danger"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {storageTone === "danger"
+            ? "Storage is full — new video and file uploads are blocked. Delete old content or ask your platform provider to upgrade."
+            : `Storage is ${storage.usedPercent}% full — consider removing old videos or notes before you reach the limit.`}
+        </p>
+      )}
+
       <QuickPills items={quickActions} />
+
+      {storage && <StorageUsageCard usage={storage} />}
 
       {error && (
         <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>

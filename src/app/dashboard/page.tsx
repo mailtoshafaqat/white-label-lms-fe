@@ -22,6 +22,7 @@ import {
   Zap,
   Calendar,
   ArrowRight,
+  Award,
 } from "lucide-react";
 import { BrandHeader } from "@/components/brand-header";
 import { GlobalSearch } from "@/components/global-search";
@@ -248,9 +249,13 @@ export default function DashboardPage() {
   const weeklyMax = Math.max(...(overview?.weeklyTrend.map((d) => d.accuracy) ?? [0]), 1);
 
   const quickActions = videosOnly
-    ? [{ href: "/videos", label: "Video library", icon: Video, show: true }]
+    ? [
+        { href: "/videos", label: "Video library", icon: Video, show: true },
+        { href: "/certificates", label: "Certificates", icon: Award, show: true },
+      ]
     : [
         { href: "/videos", label: "Video library", icon: Video, show: true },
+        { href: "/certificates", label: "Certificates", icon: Award, show: true },
         { href: "/bookmarks", label: "Bookmarks", icon: Bookmark, show: true },
         {
           href: "/weakness-quiz",
@@ -772,7 +777,7 @@ export default function DashboardPage() {
                             <span>Rs. {b.price.toLocaleString()}</span>
                           )}
                         </div>
-                        {enrolled && !videosOnly && progress && progress.topicsTotal > 0 && (
+                        {enrolled && progress && progress.topicsTotal > 0 && (
                           <div className="mt-4">
                             <div className="mb-1 flex justify-between text-xs text-slate-500">
                               <span>{progress.percentComplete}% complete</span>
