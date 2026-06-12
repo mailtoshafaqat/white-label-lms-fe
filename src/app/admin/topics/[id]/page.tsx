@@ -125,8 +125,10 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
   const [canRenameStructure, setCanRenameStructure] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
-  const [lec, setLec] = useState({ title: "", url: "" });
-  const [note, setNote] = useState({ title: "", contentHtml: "" });
+  const [lec, setLec] = useState({ title: "", url: "", storageKey: "" });
+  const [lectureUploading, setLectureUploading] = useState(false);
+  const [note, setNote] = useState({ title: "", contentHtml: "", storageKey: "" });
+  const [noteUploading, setNoteUploading] = useState(false);
   const emptyQuestion = (): QuestionForm => ({
     stem: "",
     options: ["", "", "", ""],
@@ -462,7 +464,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
             {lectures.map((l) => (
               <div key={l.id} className="flex items-center gap-2 text-sm">
                 <span className="text-slate-700">{l.title}</span>
-                <span className="truncate text-xs text-slate-400">{l.url}</span>
+                <span className="truncate text-xs text-slate-400">{l.url ?? "Uploaded file"}</span>
                 <button
                   className="ml-auto text-slate-300 hover:text-red-600"
                   onClick={() =>
@@ -494,24 +496,59 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
               />
               <input
                 value={lec.url}
-                onChange={(e) => setLec({ ...lec, url: e.target.value })}
-                placeholder="Video URL (mp4/HLS)"
+                onChange={(e) => setLec({ ...lec, url: e.target.value, storageKey: "" })}
+                placeholder="Video URL (mp4/HLS) — optional if uploading"
                 className={field}
               />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600 hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                <Upload className="h-3.5 w-3.5" />
+                {lectureUploading ? "Uploading…" : "Upload video file"}
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                  className="sr-only"
+                  disabled={lectureUploading}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setLectureUploading(true);
+                    setError(null);
+                    try {
+                      const uploaded = await adminApi.uploadLectureVideo(file);
+                      setLec((prev) => ({ ...prev, storageKey: uploaded.key, url: "" }));
+                    } catch (err) {
+                      fail(err);
+                    } finally {
+                      setLectureUploading(false);
+                    }
+                  }}
+                />
+              </label>
+              {lec.storageKey && (
+                <span className="text-xs text-emerald-700">File ready: {lec.storageKey.split("/").pop()}</span>
+              )}
             </div>
             <Button
               size="sm"
               onClick={async () => {
                 if (!lec.title.trim()) return;
+                if (!lec.url.trim() && !lec.storageKey) {
+                  setError("Add a video URL or upload a file.");
+                  return;
+                }
                 try {
                   const created = await adminApi.addLecture(topicId, {
                     title: lec.title.trim(),
-                    url: lec.url.trim(),
+                    url: lec.url.trim() || undefined,
+                    storageKey: lec.storageKey || undefined,
                     durationSec: 0,
                     order: lectures.length + 1,
                   });
                   setLectures((p) => [...p, created]);
-                  setLec({ title: "", url: "" });
+                  setLec({ title: "", url: "", storageKey: "" });
                 } catch (e) {
                   fail(e);
                 }
@@ -532,6 +569,9 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
             {notes.map((n) => (
               <div key={n.id} className="flex items-center gap-2 text-sm">
                 <span className="text-slate-700">{n.title}</span>
+                <span className="truncate text-xs text-slate-400">
+                  {n.downloadUrl ? "PDF/DOC file" : n.contentHtml ? "HTML" : "—"}
+                </span>
                 <button
                   className="ml-auto text-slate-300 hover:text-red-600"
                   onClick={() =>
@@ -563,22 +603,59 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
             <textarea
               value={note.contentHtml}
               onChange={(e) => setNote({ ...note, contentHtml: e.target.value })}
-              placeholder="Note content (HTML allowed)"
+              placeholder="Note text (HTML allowed) — optional if uploading a file"
               rows={3}
               className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600 hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                <Upload className="h-3.5 w-3.5" />
+                {noteUploading ? "Uploading…" : "Upload PDF/DOC"}
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf"
+                  className="sr-only"
+                  disabled={noteUploading}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setNoteUploading(true);
+                    setError(null);
+                    try {
+                      const uploaded = await adminApi.uploadNoteFile(file);
+                      setNote((prev) => ({ ...prev, storageKey: uploaded.key }));
+                    } catch (err) {
+                      fail(err);
+                    } finally {
+                      setNoteUploading(false);
+                    }
+                  }}
+                />
+              </label>
+              {note.storageKey && (
+                <span className="text-xs text-emerald-700">
+                  File ready: {note.storageKey.split("/").pop()}
+                </span>
+              )}
+            </div>
             <Button
               size="sm"
               onClick={async () => {
                 if (!note.title.trim()) return;
+                if (!note.contentHtml.trim() && !note.storageKey) {
+                  setError("Add note text or upload a PDF/DOC file.");
+                  return;
+                }
                 try {
                   const created = await adminApi.addNote(topicId, {
                     title: note.title.trim(),
-                    contentHtml: note.contentHtml,
+                    contentHtml: note.contentHtml.trim() || undefined,
+                    storageKey: note.storageKey || undefined,
                     order: notes.length + 1,
                   });
                   setNotes((p) => [...p, created]);
-                  setNote({ title: "", contentHtml: "" });
+                  setNote({ title: "", contentHtml: "", storageKey: "" });
                 } catch (e) {
                   fail(e);
                 }

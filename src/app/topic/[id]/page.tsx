@@ -6,16 +6,14 @@ import Link from "next/link";
 import { ArrowLeft, FileText, ClipboardList, Layers, Lock, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { contentApi, API_BASE_URL, type LectureDto, type TopicContentDto } from "@/lib/api";
+import { contentApi, enrollmentApi, type LectureDto, type TopicContentDto } from "@/lib/api";
+import { ProtectedVideo } from "@/components/protected-video";
+import { authenticatedMediaUrl } from "@/lib/media-url";
 import { getSession } from "@/lib/auth";
 import { getTenantSlug, loadAndApplyBranding, type BrandingDto } from "@/lib/branding";
 import { MentorPanel } from "@/components/mentor-panel";
 import { BookmarkButton } from "@/components/bookmark-button";
-
-function absolute(url: string | null): string | undefined {
-  if (!url) return undefined;
-  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
-}
+import { isVideosOnlyStudent } from "@/lib/student-access";
 
 function LecturePlayer({ lecture }: { lecture: LectureDto }) {
   const slug = getTenantSlug();
@@ -50,10 +48,10 @@ function LecturePlayer({ lecture }: { lecture: LectureDto }) {
         <CardTitle>{lecture.title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <video
-          controls
+        <ProtectedVideo
+          src={lecture.url}
+          title={lecture.title}
           className="aspect-video w-full rounded-md bg-black"
-          src={absolute(lecture.url)}
         />
       </CardContent>
     </Card>
@@ -65,6 +63,7 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter();
   const [content, setContent] = useState<TopicContentDto | null>(null);
   const [branding, setBranding] = useState<BrandingDto | null>(null);
+  const [videosOnly, setVideosOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,25 +73,31 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
       return;
     }
     loadAndApplyBranding().then(setBranding);
-    contentApi
-      .topicContent(id)
-      .then(setContent)
+    Promise.all([contentApi.topicContent(id), enrollmentApi.myEnrollments()])
+      .then(([topicContent, enrollments]) => {
+        setContent(topicContent);
+        setVideosOnly(isVideosOnlyStudent(enrollments));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [id, router]);
 
   const lectures = content?.lectures ?? [];
+  const backHref = videosOnly ? "/videos" : "/dashboard";
+  const backLabel = videosOnly ? "Video library" : "Dashboard";
 
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4">
         <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-slate-500 hover:text-slate-800">
+          <Link href={backHref} className="text-slate-500 hover:text-slate-800" title={backLabel}>
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <span className="font-semibold text-slate-900">Topic</span>
+          <span className="font-semibold text-slate-900">
+            {videosOnly ? "Lecture" : "Topic"}
+          </span>
         </div>
-        {content && (
+        {content && !videosOnly && (
           <BookmarkButton
             targetType="Topic"
             targetId={id}
@@ -102,7 +107,11 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
         )}
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[1fr_340px]">
+      <main
+        className={`mx-auto grid max-w-6xl gap-6 px-6 py-8 ${
+          videosOnly ? "" : "lg:grid-cols-[1fr_340px]"
+        }`}
+      >
         <div>
         {loading && <p className="text-slate-500">Loading…</p>}
         {error && (
@@ -123,23 +132,25 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
               <p className="text-slate-500">No lecture for this topic yet.</p>
             )}
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button asChild>
-                <Link href={`/quiz/${id}`}>
-                  <ClipboardList className="h-4 w-4" /> Take the Daily Practice Test
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={`/flashcards/${id}`}>
-                  <Layers className="h-4 w-4" /> Review flashcards
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={`/doubts?topicId=${id}`}>
-                  <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
-                </Link>
-              </Button>
-            </div>
+            {!videosOnly && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button asChild>
+                  <Link href={`/quiz/${id}`}>
+                    <ClipboardList className="h-4 w-4" /> Take the Daily Practice Test
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={`/flashcards/${id}`}>
+                    <Layers className="h-4 w-4" /> Review flashcards
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={`/doubts?topicId=${id}`}>
+                    <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
+                  </Link>
+                </Button>
+              </div>
+            )}
 
             <section className="mt-6">
               <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -151,22 +162,25 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
                     <CardHeader>
                       <CardTitle>{n.title}</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-3">
                       {n.contentHtml ? (
                         <div
                           className="prose prose-sm max-w-none text-slate-700"
                           dangerouslySetInnerHTML={{ __html: n.contentHtml }}
                         />
-                      ) : n.downloadUrl ? (
+                      ) : null}
+                      {n.downloadUrl ? (
                         <a
-                          href={absolute(n.downloadUrl)}
-                          className="text-sm font-medium text-[var(--brand)]"
+                          href={authenticatedMediaUrl(n.downloadUrl)}
+                          download
+                          className="inline-flex text-sm font-medium text-[var(--brand)] hover:underline"
                         >
-                          Download notes
+                          Download notes (PDF/DOC)
                         </a>
-                      ) : (
+                      ) : null}
+                      {!n.contentHtml && !n.downloadUrl ? (
                         <p className="text-sm text-slate-500">No content.</p>
-                      )}
+                      ) : null}
                     </CardContent>
                   </Card>
                 ))}
@@ -178,7 +192,7 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
           </>
         )}
         </div>
-        {branding?.syllabusMentorEnabled !== false && (
+        {!videosOnly && branding?.syllabusMentorEnabled !== false && (
           <aside className="lg:sticky lg:top-4 lg:self-start">
             <MentorPanel topicId={id} branding={branding} compact />
           </aside>

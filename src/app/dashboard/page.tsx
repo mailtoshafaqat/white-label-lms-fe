@@ -51,6 +51,7 @@ import {
   hasMistakeDiary,
   hasSyllabusMentor,
 } from "@/lib/product-profile";
+import { isVideosOnlyStudent } from "@/lib/student-access";
 
 type LeaderboardSize = 5 | 10;
 
@@ -231,6 +232,14 @@ export default function DashboardPage() {
     router.replace("/login");
   }
 
+  const videosOnly = isVideosOnlyStudent(enrollments);
+  const enrolledBundleIds = new Set(
+    enrollments.filter((e) => e.isActive).map((e) => e.bundleId),
+  );
+  const visibleBundles = videosOnly
+    ? bundles.filter((b) => enrolledBundleIds.has(b.id))
+    : bundles;
+  const recentVideoTopics = videosOnly ? topics.filter((t) => t.hasVideo) : topics;
   const academyName = branding?.displayName ?? authSession?.tenant?.tenantName ?? "your academy";
   const primaryCourse =
     overview?.bundleProgress[0]?.bundleTitle ??
@@ -238,37 +247,40 @@ export default function DashboardPage() {
     bundles.find((b) => enrollments.some((e) => e.bundleId === b.id))?.title;
   const weeklyMax = Math.max(...(overview?.weeklyTrend.map((d) => d.accuracy) ?? [0]), 1);
 
-  const quickActions = [
-    { href: "/bookmarks", label: "Bookmarks", icon: Bookmark, show: true },
-    {
-      href: "/weakness-quiz",
-      label: "Weakness quiz",
-      icon: Target,
-      show: hasMistakeDiary(authSession?.tenant),
-    },
-    {
-      href: "/mistakes",
-      label: "Mistake diary",
-      icon: BookX,
-      show: hasMistakeDiary(authSession?.tenant),
-    },
-    {
-      href: "/mentor",
-      label: mentorLabel(branding),
-      icon: Brain,
-      show: hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled),
-    },
-    {
-      href: "/doubts",
-      label: "Ask teacher",
-      icon: MessageCircleQuestion,
-      show: hasDoubts(authSession?.tenant),
-    },
-    { href: "#leaderboard", label: "Leaderboard", icon: Trophy, show: true },
-    ...(hasMockExams(authSession?.tenant)
-      ? [{ href: "/mock-exams", label: "Mock exams", icon: Medal, show: true }]
-      : []),
-  ].filter((a) => a.show);
+  const quickActions = videosOnly
+    ? [{ href: "/videos", label: "Video library", icon: Video, show: true }]
+    : [
+        { href: "/videos", label: "Video library", icon: Video, show: true },
+        { href: "/bookmarks", label: "Bookmarks", icon: Bookmark, show: true },
+        {
+          href: "/weakness-quiz",
+          label: "Weakness quiz",
+          icon: Target,
+          show: hasMistakeDiary(authSession?.tenant),
+        },
+        {
+          href: "/mistakes",
+          label: "Mistake diary",
+          icon: BookX,
+          show: hasMistakeDiary(authSession?.tenant),
+        },
+        {
+          href: "/mentor",
+          label: mentorLabel(branding),
+          icon: Brain,
+          show: hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled),
+        },
+        {
+          href: "/doubts",
+          label: "Ask teacher",
+          icon: MessageCircleQuestion,
+          show: hasDoubts(authSession?.tenant),
+        },
+        { href: "#leaderboard", label: "Leaderboard", icon: Trophy, show: true },
+        ...(hasMockExams(authSession?.tenant)
+          ? [{ href: "/mock-exams", label: "Mock exams", icon: Medal, show: true }]
+          : []),
+      ].filter((a) => a.show);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100/80 via-white to-slate-50">
@@ -313,9 +325,11 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mb-6">
-          <GlobalSearch />
-        </div>
+        {!videosOnly && (
+          <div className="mb-6">
+            <GlobalSearch />
+          </div>
+        )}
 
         {error && (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -334,7 +348,17 @@ export default function DashboardPage() {
                 {timeGreeting()}, {firstName(name || "there")}
               </h1>
               <p className="mt-2 max-w-xl text-sm text-white/80 sm:text-base">
-                {primaryCourse ? (
+                {videosOnly ? (
+                  primaryCourse ? (
+                    <>
+                      Your <strong className="text-white">video lectures</strong> plan for{" "}
+                      <strong className="text-white">{primaryCourse}</strong> is active. Open the video library to
+                      start watching.
+                    </>
+                  ) : (
+                    "Your video lectures plan is active. Open the video library when content is added."
+                  )
+                ) : primaryCourse ? (
                   <>
                     You&apos;re enrolled in <strong className="text-white">{primaryCourse}</strong>.
                     {overview && overview.overallAccuracy > 0
@@ -383,7 +407,29 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {videosOnly && !loading && (
+          <section className="mt-6">
+            <Card className="border-violet-200 bg-violet-50/50">
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold text-slate-900">Video lectures plan</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Watch recorded lectures from your enrolled subjects in one place.
+                  </p>
+                </div>
+                <Button asChild>
+                  <Link href="/videos">
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    Open video library
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         {/* KPI cards */}
+        {!videosOnly && (
         <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -448,8 +494,10 @@ export default function DashboardPage() {
             </>
           )}
         </section>
+        )}
 
         {/* Analytics row */}
+        {!videosOnly && (
         <section className="mt-6 grid gap-6 lg:grid-cols-5">
           <Card className="border-slate-200/80 shadow-sm lg:col-span-3">
             <CardHeader className="pb-2">
@@ -578,8 +626,10 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </section>
+        )}
 
         {/* Weekly trend + live classes */}
+        {!videosOnly && (
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
           <Card className="border-slate-200/80 shadow-sm">
             <CardHeader className="pb-2">
@@ -681,89 +731,120 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </section>
+        )}
 
         {/* Courses */}
         <section className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-900">My courses</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {videosOnly ? "My video plan" : "My courses"}
+          </h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {loading ? (
               <p className="text-slate-500">Loading courses…</p>
             ) : (
-              bundles.map((b) => {
-                const enrolled = enrollments.find((e) => e.bundleId === b.id);
-                const progress = overview?.bundleProgress.find((p) => p.bundleId === b.id);
-                return (
-                  <Card
-                    key={b.id}
-                    className={`overflow-hidden border-slate-200/80 shadow-sm transition hover:shadow-md ${
-                      enrolled ? "ring-1 ring-[var(--brand)]/10" : ""
-                    }`}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-base leading-snug">{b.title}</CardTitle>
-                        {enrolled && (
-                          <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
-                            Enrolled
-                          </span>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center justify-between text-sm text-slate-600">
-                        <span>{b.subjectCount} subjects</span>
-                        {!enrolled && <span>Rs. {b.price.toLocaleString()}</span>}
-                      </div>
-                      {enrolled && progress && progress.topicsTotal > 0 && (
-                        <div className="mt-4">
-                          <div className="mb-1 flex justify-between text-xs text-slate-500">
-                            <span>{progress.percentComplete}% complete</span>
-                            <span>
-                              {progress.topicsTotal - progress.topicsCompleted} topics remaining
+              visibleBundles.length === 0 ? (
+                <p className="text-sm text-slate-500">No enrolled video plans yet.</p>
+              ) : (
+                visibleBundles.map((b) => {
+                  const enrolled = enrollments.find((e) => e.bundleId === b.id && e.isActive);
+                  const progress = overview?.bundleProgress.find((p) => p.bundleId === b.id);
+                  return (
+                    <Card
+                      key={b.id}
+                      className={`overflow-hidden border-slate-200/80 shadow-sm transition hover:shadow-md ${
+                        enrolled ? "ring-1 ring-[var(--brand)]/10" : ""
+                      }`}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <CardTitle className="text-base leading-snug">{b.title}</CardTitle>
+                          {enrolled && (
+                            <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                              Enrolled
                             </span>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-[var(--brand)] to-[var(--brand)]/70"
-                              style={{ width: `${progress.percentComplete}%` }}
-                            />
-                          </div>
+                          )}
                         </div>
-                      )}
-                      {enrolled && (
-                        <p className="mt-3 text-xs text-slate-500">
-                          Expires {new Date(enrolled.expiresAt).toLocaleDateString()}
-                        </p>
-                      )}
-                      <div className="mt-4">
-                        {enrolled ? null : selfEnroll ? (
-                          <Button
-                            size="sm"
-                            onClick={() => enroll(b.id)}
-                            disabled={enrolling === b.id}
-                          >
-                            {enrolling === b.id ? "Enrolling…" : "Enroll"}
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-slate-500">
-                            Contact your institute to enroll
-                          </span>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between text-sm text-slate-600">
+                          <span>{b.subjectCount} subjects</span>
+                          {!enrolled && !videosOnly && (
+                            <span>Rs. {b.price.toLocaleString()}</span>
+                          )}
+                        </div>
+                        {enrolled && !videosOnly && progress && progress.topicsTotal > 0 && (
+                          <div className="mt-4">
+                            <div className="mb-1 flex justify-between text-xs text-slate-500">
+                              <span>{progress.percentComplete}% complete</span>
+                              <span>
+                                {progress.topicsTotal - progress.topicsCompleted} topics remaining
+                              </span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[var(--brand)] to-[var(--brand)]/70"
+                                style={{ width: `${progress.percentComplete}%` }}
+                              />
+                            </div>
+                          </div>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })
+                        {enrolled && (
+                          <p className="mt-3 text-xs text-slate-500">
+                            Expires {new Date(enrolled.expiresAt).toLocaleDateString()}
+                          </p>
+                        )}
+                        {videosOnly && enrolled && (
+                          <div className="mt-4">
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href="/videos">
+                                <Video className="mr-2 h-3.5 w-3.5" />
+                                Browse lectures
+                              </Link>
+                            </Button>
+                          </div>
+                        )}
+                        <div className="mt-4">
+                          {enrolled || videosOnly ? null : selfEnroll ? (
+                            <Button
+                              size="sm"
+                              onClick={() => enroll(b.id)}
+                              disabled={enrolling === b.id}
+                            >
+                              {enrolling === b.id ? "Enrolling…" : "Enroll"}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-slate-500">
+                              Contact your institute to enroll
+                            </span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              )
             )}
           </div>
         </section>
 
-        {/* Continue learning */}
-        {topics.length > 0 && (
+        {/* Continue learning / recent videos */}
+        {recentVideoTopics.length > 0 && (
           <section className="mt-8">
-            <h2 className="text-lg font-semibold text-slate-900">Continue learning</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-900">
+                {videosOnly ? "Recent videos" : "Continue learning"}
+              </h2>
+              {videosOnly && (
+                <Link
+                  href="/videos"
+                  className="text-sm font-medium text-[var(--brand)] hover:underline"
+                >
+                  View all
+                </Link>
+              )}
+            </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-3">
-              {topics.map((t) => (
+              {recentVideoTopics.map((t) => (
                 <Link key={t.id} href={`/topic/${t.id}`}>
                   <Card className="h-full border-slate-200/80 shadow-sm transition hover:border-[var(--brand)]/30 hover:shadow-md">
                     <CardContent className="pt-5">
@@ -772,15 +853,19 @@ export default function DashboardPage() {
                       <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
                         {t.hasVideo && (
                           <span className="flex items-center gap-1">
-                            <Video className="h-3.5 w-3.5" /> Video
+                            <Video className="h-3.5 w-3.5" /> Video lecture
                           </span>
                         )}
-                        <span className="flex items-center gap-1">
-                          <BookOpen className="h-3.5 w-3.5" /> {t.mcqCount} MCQs
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Layers className="h-3.5 w-3.5" /> {t.flashcardCount} cards
-                        </span>
+                        {!videosOnly && (
+                          <>
+                            <span className="flex items-center gap-1">
+                              <BookOpen className="h-3.5 w-3.5" /> {t.mcqCount} MCQs
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Layers className="h-3.5 w-3.5" /> {t.flashcardCount} cards
+                            </span>
+                          </>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

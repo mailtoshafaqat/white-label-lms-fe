@@ -817,7 +817,7 @@ function BundleNode({
   manageStructure,
   searchQuery,
   bundlePriceEdit,
-  onPriceUpdated,
+  onBundleUpdated,
   catalog,
 }: {
   bundle: BundleDto;
@@ -827,7 +827,7 @@ function BundleNode({
   manageStructure: boolean;
   searchQuery: string;
   bundlePriceEdit: boolean;
-  onPriceUpdated: (id: string, price: number) => void;
+  onBundleUpdated: (id: string, patch: Partial<BundleDto>) => void;
   catalog: SubjectDefinitionDto[];
 }) {
   const bundleLabelTitle = profileBundleLabelTitle(tenant);
@@ -838,10 +838,12 @@ function BundleNode({
   const [priceInput, setPriceInput] = useState(String(bundle.price));
   const [priceSaving, setPriceSaving] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [videosOnly, setVideosOnly] = useState(bundle.videosOnly);
 
   useEffect(() => {
     setPriceInput(String(bundle.price));
-  }, [bundle.price]);
+    setVideosOnly(bundle.videosOnly);
+  }, [bundle.price, bundle.videosOnly]);
 
   const q = searchQuery.trim().toLowerCase();
   const titleMatch = !q || bundle.title.toLowerCase().includes(q);
@@ -878,6 +880,33 @@ function BundleNode({
           {bundleLabelTitle}
         </span>
         <span className="font-semibold text-slate-900">{bundle.title}</span>
+        {videosOnly && (
+          <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+            Videos only
+          </span>
+        )}
+        {manageStructure && (
+          <label className="ml-1 flex items-center gap-1 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={videosOnly}
+              onChange={async (e) => {
+                const next = e.target.checked;
+                setVideosOnly(next);
+                try {
+                  const updated = await adminApi.updateBundle(bundle.id, {
+                    price: bundle.price,
+                    videosOnly: next,
+                  });
+                  onBundleUpdated(bundle.id, { videosOnly: updated.videosOnly });
+                } catch {
+                  setVideosOnly(!next);
+                }
+              }}
+            />
+            Video-lectures plan
+          </label>
+        )}
         {bundlePriceEdit && manageStructure ? (
           editingPrice ? (
             <div className="flex items-center gap-1">
@@ -902,8 +931,8 @@ function BundleNode({
                   setPriceSaving(true);
                   setPriceError(null);
                   try {
-                    await adminApi.updateBundle(bundle.id, { price });
-                    onPriceUpdated(bundle.id, price);
+                    const updated = await adminApi.updateBundle(bundle.id, { price });
+                    onBundleUpdated(bundle.id, { price: updated.price });
                     setEditingPrice(false);
                   } catch (e) {
                     setPriceError(e instanceof Error ? e.message : "Could not save price");
@@ -1274,9 +1303,9 @@ export default function AdminPage() {
                 searchQuery={searchQuery}
                 bundlePriceEdit={bundlePriceEdit}
                 catalog={catalog}
-                onPriceUpdated={(id, price) =>
+                onBundleUpdated={(id, patch) =>
                   setBundles((prev) =>
-                    prev.map((x) => (x.id === id ? { ...x, price } : x))
+                    prev.map((x) => (x.id === id ? { ...x, ...patch } : x))
                   )
                 }
                 onRequestDelete={handleRequestDelete}

@@ -119,7 +119,13 @@ export type UserProfileDto = {
   profilePictureUrl: string | null;
 };
 
-export type BundleDto = { id: string; title: string; subjectCount: number; price: number };
+export type BundleDto = {
+  id: string;
+  title: string;
+  subjectCount: number;
+  price: number;
+  videosOnly: boolean;
+};
 export type SubjectDto = {
   id: string;
   title: string;
@@ -180,6 +186,24 @@ export type TopicContentDto = {
 export const contentApi = {
   topicContent: (topicId: string) =>
     request<TopicContentDto>(`/api/v1/topics/${topicId}/content`),
+  videoLibrary: () => request<VideoLibraryDto>(`/api/v1/me/video-library`),
+};
+
+export type VideoLibraryItemDto = {
+  lectureId: string;
+  lectureTitle: string;
+  playUrl: string | null;
+  durationSec: number;
+  topicId: string;
+  topicTitle: string;
+  subjectTitle: string;
+  bundleTitle: string;
+  bundleId: string;
+};
+
+export type VideoLibraryDto = {
+  videosOnlyStudent: boolean;
+  items: VideoLibraryItemDto[];
 };
 
 export type QuizQuestionDto = {
@@ -384,6 +408,7 @@ export type EnrollmentDto = {
   enrolledAt: string;
   expiresAt: string;
   isActive: boolean;
+  videosOnly: boolean;
 };
 
 export const enrollmentApi = {
@@ -541,7 +566,7 @@ export const adminApi = {
   // Course tree
   createBundle: (b: { title: string; price: number; validityDays: number }) =>
     post<BundleDto>("/api/v1/admin/bundles", b),
-  updateBundle: (id: string, b: { price: number; validityDays?: number }) =>
+  updateBundle: (id: string, b: { price: number; validityDays?: number; videosOnly?: boolean }) =>
     request<BundleDto>(`/api/v1/admin/bundles/${id}`, {
       method: "PUT",
       body: JSON.stringify(b),
@@ -588,11 +613,17 @@ export const adminApi = {
   // Topic content
   topicContent: (topicId: string) =>
     request<TopicContentDto>(`/api/v1/admin/topics/${topicId}/content`),
-  addLecture: (topicId: string, b: { title: string; url: string; durationSec: number; order: number }) =>
-    post<LectureDto>(`/api/v1/admin/topics/${topicId}/lectures`, b),
+  addLecture: (
+    topicId: string,
+    b: { title: string; url?: string; storageKey?: string; durationSec: number; order: number }
+  ) => post<LectureDto>(`/api/v1/admin/topics/${topicId}/lectures`, b),
+  uploadLectureVideo: (file: File) => uploadBrandingFile(file, "lectures"),
   deleteLecture: (id: string) => del(`/api/v1/admin/lectures/${id}`),
-  addNote: (topicId: string, b: { title: string; contentHtml: string; order: number }) =>
-    post<NoteDto>(`/api/v1/admin/topics/${topicId}/notes`, b),
+  addNote: (
+    topicId: string,
+    b: { title: string; contentHtml?: string; storageKey?: string; order: number }
+  ) => post<NoteDto>(`/api/v1/admin/topics/${topicId}/notes`, b),
+  uploadNoteFile: (file: File) => uploadBrandingFile(file, "notes"),
   deleteNote: (id: string) => del(`/api/v1/admin/notes/${id}`),
 
   // MCQs
