@@ -6,10 +6,12 @@ type Toast = {
   id: number;
   message: string;
   traceId?: string;
+  variant: "error" | "success";
 };
 
 type ErrorToastContextValue = {
   showError: (message: string, traceId?: string) => void;
+  showSuccess: (message: string) => void;
 };
 
 const ErrorToastContext = createContext<ErrorToastContextValue | null>(null);
@@ -17,23 +19,43 @@ const ErrorToastContext = createContext<ErrorToastContextValue | null>(null);
 export function ErrorToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showError = useCallback((message: string, traceId?: string) => {
-    const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, message, traceId }]);
+  const dismissAfter = useCallback((id: number, ms: number) => {
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 9000);
+    }, ms);
   }, []);
 
+  const showError = useCallback(
+    (message: string, traceId?: string) => {
+      const id = Date.now() + Math.random();
+      setToasts((prev) => [...prev, { id, message, traceId, variant: "error" }]);
+      dismissAfter(id, 9000);
+    },
+    [dismissAfter]
+  );
+
+  const showSuccess = useCallback(
+    (message: string) => {
+      const id = Date.now() + Math.random();
+      setToasts((prev) => [...prev, { id, message, variant: "success" }]);
+      dismissAfter(id, 4000);
+    },
+    [dismissAfter]
+  );
+
   return (
-    <ErrorToastContext.Provider value={{ showError }}>
+    <ErrorToastContext.Provider value={{ showError, showSuccess }}>
       {children}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex max-w-sm flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto rounded-lg border border-red-500/30 bg-red-950/95 px-4 py-3 text-sm text-red-50 shadow-lg"
-            role="alert"
+            className={
+              toast.variant === "success"
+                ? "pointer-events-auto rounded-lg border border-emerald-500/30 bg-emerald-950/95 px-4 py-3 text-sm text-emerald-50 shadow-lg"
+                : "pointer-events-auto rounded-lg border border-red-500/30 bg-red-950/95 px-4 py-3 text-sm text-red-50 shadow-lg"
+            }
+            role={toast.variant === "success" ? "status" : "alert"}
           >
             <p>{toast.message}</p>
             {toast.traceId && (

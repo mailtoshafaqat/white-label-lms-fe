@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Archive, ArchiveRestore, ClipboardList, Plus, Trash2 } from "lucide-react";
 import { AdminNav } from "@/components/admin-nav";
+import { InfoTooltip } from "@/components/info-tooltip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,6 +19,7 @@ import {
   type TopicDto,
 } from "@/lib/api";
 import { getSession, isAdmin } from "@/lib/auth";
+import { profileCohortLabel, profileEmailTeachersOnCohortComplete } from "@/lib/product-profile";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 function toDatetimeLocal(iso: string | null): string {
@@ -56,6 +58,8 @@ export default function AdminMockExamsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  const tenant = getSession()?.tenant;
+  const cohortLabel = profileCohortLabel(tenant);
 
   useEffect(() => {
     const session = getSession();
@@ -123,11 +127,22 @@ export default function AdminMockExamsPage() {
     return null;
   }
 
+  function validateForm(): string | null {
+    const sectionError = validateSections();
+    if (sectionError) return sectionError;
+    if (isPublished && resultVisibility === "AfterClose" && !availableUntil.trim()) {
+      return "Published exams need an Available until date when result visibility is “After window closes”. Set the end date below or choose Immediate / Manual publish.";
+    }
+    return null;
+  }
+
+  const publishNeedsEndDate = isPublished && resultVisibility === "AfterClose";
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const sectionError = validateSections();
-    if (sectionError) {
-      setError(sectionError);
+    const formError = validateForm();
+    if (formError) {
+      setError(formError);
       return;
     }
     try {
@@ -176,9 +191,9 @@ export default function AdminMockExamsPage() {
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editingExamId) return;
-    const sectionError = validateSections();
-    if (sectionError) {
-      setError(sectionError);
+    const formError = validateForm();
+    if (formError) {
+      setError(formError);
       return;
     }
     try {
@@ -343,12 +358,27 @@ export default function AdminMockExamsPage() {
                     <div>
                       <label className="mb-1 block text-xs font-medium text-slate-600">
                         Available until
+                        {publishNeedsEndDate && (
+                          <span className="ml-1 text-red-600" title="Required to publish with after-close results">
+                            *
+                          </span>
+                        )}
                       </label>
                       <input
                         type="datetime-local"
                         value={availableUntil}
                         onChange={(e) => setAvailableUntil(e.target.value)}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        required={publishNeedsEndDate}
+                        title={
+                          publishNeedsEndDate
+                            ? "Required when publishing with after-close result visibility"
+                            : "Optional end of the exam window"
+                        }
+                        className={`w-full rounded-md border px-3 py-2 text-sm ${
+                          publishNeedsEndDate && !availableUntil
+                            ? "border-amber-400 ring-1 ring-amber-200"
+                            : "border-slate-300"
+                        }`}
                       />
                     </div>
                   </div>
@@ -359,6 +389,9 @@ export default function AdminMockExamsPage() {
                       onChange={(e) => setIsPublished(e.target.checked)}
                     />
                     Published (visible to enrolled students)
+                    <InfoTooltip
+                      text="Students enrolled in this course bundle will see the exam once published. If result visibility is “After window closes”, you must set Available until before saving."
+                    />
                   </label>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div>
@@ -392,7 +425,7 @@ export default function AdminMockExamsPage() {
                           checked={notifyBatchComplete}
                           onChange={(e) => setNotifyBatchComplete(e.target.checked)}
                         />
-                        Email teachers on batch complete
+                        {profileEmailTeachersOnCohortComplete(tenant)}
                       </label>
                     </div>
                   </div>
@@ -403,7 +436,7 @@ export default function AdminMockExamsPage() {
                       max={100}
                       value={batchThreshold}
                       onChange={(e) => setBatchThreshold(e.target.value)}
-                      placeholder="Batch threshold %"
+                      placeholder={`${cohortLabel.charAt(0).toUpperCase()}${cohortLabel.slice(1)} threshold %`}
                       className="w-full max-w-[10rem] rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   )}

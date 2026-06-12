@@ -8,6 +8,7 @@ import { SuperAdminShell } from "@/components/superadmin-shell";
 import { superAdminApi, type ProductProfile, type TenantListItemDto } from "@/lib/api";
 import { PRODUCT_PROFILE_LABELS } from "@/lib/product-profile";
 import { getSession, isSuperAdmin } from "@/lib/auth";
+import { trialListBadge } from "@/lib/trial";
 
 const statusStyle: Record<string, string> = {
   Active: "bg-emerald-500/20 text-emerald-300 ring-emerald-500/30",
@@ -62,6 +63,7 @@ export default function SuperAdminPage() {
           slug: t.slug,
           status: t.status,
           plan: t.plan,
+          trialEndsAt: t.trialEndsAt,
           createdAt: t.createdAt,
         },
         ...prev,
@@ -92,6 +94,24 @@ export default function SuperAdminPage() {
           {error}
         </p>
       )}
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+          <Sparkles className="h-5 w-5 text-indigo-400" />
+          <p className="mt-2 text-sm font-medium text-white">You configure</p>
+          <p className="mt-1 text-xs text-slate-400">Tenant flags, branding defaults, institute admins</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+          <Users className="h-5 w-5 text-indigo-400" />
+          <p className="mt-2 text-sm font-medium text-white">They operate</p>
+          <p className="mt-1 text-xs text-slate-400">Institute admin runs CMS, students, Zoom, email</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+          <Settings className="h-5 w-5 text-indigo-400" />
+          <p className="mt-2 text-sm font-medium text-white">Per-tenant</p>
+          <p className="mt-1 text-xs text-slate-400">Each institute has isolated data and branding</p>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur lg:col-span-1">
@@ -173,7 +193,9 @@ export default function SuperAdminPage() {
             <p className="text-slate-400">No institutes yet. Create one to get started.</p>
           ) : (
             <div className="space-y-3">
-              {tenants.map((t) => (
+              {tenants.map((t) => {
+                const trialBadge = trialListBadge(t.status, t.trialEndsAt);
+                return (
                 <div
                   key={t.id}
                   className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur transition hover:border-indigo-400/40 hover:bg-white/[0.07]"
@@ -186,6 +208,17 @@ export default function SuperAdminPage() {
                       >
                         {t.status}
                       </span>
+                      {trialBadge && (
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                            trialBadge === "Trial expired"
+                              ? "bg-amber-500/20 text-amber-200 ring-amber-500/30"
+                              : "bg-sky-500/20 text-sky-200 ring-sky-500/30"
+                          }`}
+                        >
+                          {trialBadge}
+                        </span>
+                      )}
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${planStyle[t.plan] ?? "bg-slate-500/20 text-slate-300"}`}
                       >
@@ -204,27 +237,10 @@ export default function SuperAdminPage() {
                     <Settings className="h-4 w-4" /> Configure
                   </Link>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Sparkles className="h-5 w-5 text-indigo-400" />
-              <p className="mt-2 text-sm font-medium text-white">You configure</p>
-              <p className="mt-1 text-xs text-slate-400">Tenant flags, branding defaults, institute admins</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Users className="h-5 w-5 text-indigo-400" />
-              <p className="mt-2 text-sm font-medium text-white">They operate</p>
-              <p className="mt-1 text-xs text-slate-400">Institute admin runs CMS, students, Zoom, email</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <Settings className="h-5 w-5 text-indigo-400" />
-              <p className="mt-2 text-sm font-medium text-white">Per-tenant</p>
-              <p className="mt-1 text-xs text-slate-400">Each institute has isolated data and branding</p>
-            </div>
-          </div>
         </div>
       </div>
     </SuperAdminShell>

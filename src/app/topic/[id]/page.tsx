@@ -10,6 +10,7 @@ import { contentApi, API_BASE_URL, type LectureDto, type TopicContentDto } from 
 import { getSession } from "@/lib/auth";
 import { getTenantSlug, loadAndApplyBranding, type BrandingDto } from "@/lib/branding";
 import { MentorPanel } from "@/components/mentor-panel";
+import { BookmarkButton } from "@/components/bookmark-button";
 
 function absolute(url: string | null): string | undefined {
   if (!url) return undefined;
@@ -84,11 +85,21 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="min-h-screen">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-8 py-4">
-        <Link href="/dashboard" className="text-slate-500 hover:text-slate-800">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <span className="font-semibold text-slate-900">Topic</span>
+      <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4">
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard" className="text-slate-500 hover:text-slate-800">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <span className="font-semibold text-slate-900">Topic</span>
+        </div>
+        {content && (
+          <BookmarkButton
+            targetType="Topic"
+            targetId={id}
+            title={content.lectures[0]?.title ?? content.notes[0]?.title ?? "Topic"}
+            subtitle="Saved topic"
+          />
+        )}
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 py-8 lg:grid-cols-[1fr_340px]">

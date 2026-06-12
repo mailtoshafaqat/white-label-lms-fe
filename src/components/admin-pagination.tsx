@@ -8,6 +8,7 @@ type AdminPaginationProps = {
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
+  variant?: "light" | "dark";
 };
 
 function pageNumbers(current: number, totalPages: number): (number | "ellipsis")[] {
@@ -24,15 +25,26 @@ function pageNumbers(current: number, totalPages: number): (number | "ellipsis")
   return pages;
 }
 
-export function AdminPagination({ page, pageSize, total, onPageChange }: AdminPaginationProps) {
+export function AdminPagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  variant = "light",
+}: AdminPaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0) return null;
 
   const pages = pageNumbers(page, totalPages);
+  const dark = variant === "dark";
 
   return (
     <nav
-      className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3"
+      className={
+        dark
+          ? "flex items-center justify-between gap-2 border-t border-white/10 bg-white/5 px-4 py-3"
+          : "flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3"
+      }
       aria-label="Pagination"
     >
       <Button
@@ -40,6 +52,11 @@ export function AdminPagination({ page, pageSize, total, onPageChange }: AdminPa
         variant="outline"
         size="sm"
         disabled={page <= 1}
+        className={
+          dark
+            ? "border-white/25 bg-slate-800/90 text-slate-100 hover:bg-slate-700 hover:text-white"
+            : undefined
+        }
         onClick={() => onPageChange(page - 1)}
       >
         <ChevronLeft className="h-4 w-4" />
@@ -48,7 +65,7 @@ export function AdminPagination({ page, pageSize, total, onPageChange }: AdminPa
       <div className="flex items-center gap-1">
         {pages.map((p, i) =>
           p === "ellipsis" ? (
-            <span key={`e-${i}`} className="px-2 text-slate-400">
+            <span key={`e-${i}`} className={`px-2 ${dark ? "text-slate-500" : "text-slate-400"}`}>
               …
             </span>
           ) : (
@@ -58,8 +75,12 @@ export function AdminPagination({ page, pageSize, total, onPageChange }: AdminPa
               onClick={() => onPageChange(p)}
               className={`min-w-[2rem] rounded-md px-2 py-1 text-sm font-medium ${
                 p === page
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-600 hover:bg-slate-200"
+                  ? dark
+                    ? "bg-indigo-500 text-white"
+                    : "bg-slate-800 text-white"
+                  : dark
+                    ? "text-slate-300 hover:bg-white/10"
+                    : "text-slate-600 hover:bg-slate-200"
               }`}
               aria-current={p === page ? "page" : undefined}
             >
@@ -73,6 +94,11 @@ export function AdminPagination({ page, pageSize, total, onPageChange }: AdminPa
         variant="outline"
         size="sm"
         disabled={page >= totalPages}
+        className={
+          dark
+            ? "border-white/25 bg-slate-800/90 text-slate-100 hover:bg-slate-700 hover:text-white"
+            : undefined
+        }
         onClick={() => onPageChange(page + 1)}
       >
         Next

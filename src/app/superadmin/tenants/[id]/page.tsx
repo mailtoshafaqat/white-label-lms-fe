@@ -15,6 +15,7 @@ import {
   Users,
   ExternalLink,
   KeyRound,
+  CalendarClock,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SuperAdminShell } from "@/components/superadmin-shell";
@@ -28,6 +29,7 @@ import {
 import { getSession, isSuperAdmin } from "@/lib/auth";
 import { resolveAssetUrl } from "@/lib/assets";
 import { persistTenantSlug } from "@/lib/tenant";
+import { isTrialExpired, trialDaysRemaining, trialListBadge } from "@/lib/trial";
 
 export default function TenantDetailPage() {
   const router = useRouter();
@@ -40,6 +42,7 @@ export default function TenantDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [extendingTrial, setExtendingTrial] = useState(false);
 
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -117,6 +120,7 @@ export default function TenantDetailPage() {
         syllabusMentorEnabled: tenant.syllabusMentorEnabled,
         bundlePriceEditEnabled: tenant.bundlePriceEditEnabled,
         mcqBulkImportEnabled: tenant.mcqBulkImportEnabled,
+        trialEndsAt: tenant.trialEndsAt,
       });
       setTenant(updated);
       setSaved(true);
@@ -126,6 +130,26 @@ export default function TenantDetailPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function extendTrial() {
+    setExtendingTrial(true);
+    setError(null);
+    try {
+      const updated = await superAdminApi.extendTrial(id);
+      setTenant(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not extend trial");
+    } finally {
+      setExtendingTrial(false);
+    }
+  }
+
+  function trialEndInputValue(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
   }
 
   async function createAdmin(e: React.FormEvent) {
@@ -245,11 +269,14 @@ export default function TenantDetailPage() {
   }
 
   const loginUrl = `http://localhost:3000/login?tenant=${tenant.slug}`;
+  const trialBadge = trialListBadge(tenant.status, tenant.trialEndsAt);
+  const trialExpired = isTrialExpired(tenant.status, tenant.trialEndsAt);
+  const daysLeft = trialDaysRemaining(tenant.trialEndsAt);
 
   return (
     <SuperAdminShell
       title={tenant.name}
-      subtitle={`${tenant.slug} · ${tenant.status} · ${tenant.plan} plan`}
+      subtitle={`${tenant.slug} · ${tenant.status} · ${tenant.plan} plan${trialBadge ? ` · ${trialBadge}` : ""}`}
     >
       <Link
         href="/superadmin"
@@ -290,6 +317,50 @@ export default function TenantDetailPage() {
                 className={field}
               />
             </div>
+            {tenant.status === "Trial" && (
+              <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium text-sky-100">
+                      <CalendarClock className="h-4 w-4" />
+                      Trial period
+                    </p>
+                    <p className="mt-1 text-xs text-sky-200/80">
+                      {trialExpired
+                        ? "Trial has expired — students and teachers are blocked until extended or activated."
+                        : daysLeft !== null
+                          ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} remaining`
+                          : "No trial end date set"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={extendingTrial}
+                    onClick={() => void extendTrial()}
+                    className="rounded-lg border border-sky-400/30 bg-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/30 disabled:opacity-60"
+                  >
+                    {extendingTrial ? "Extending…" : "Extend 30 days"}
+                  </button>
+                </div>
+                <div className="mt-3">
+                  <label className={label}>Trial ends (UTC date)</label>
+                  <input
+                    type="date"
+                    value={trialEndInputValue(tenant.trialEndsAt)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTenant({
+                        ...tenant,
+                        trialEndsAt: value
+                          ? new Date(`${value}T23:59:59.000Z`).toISOString()
+                          : null,
+                      });
+                    }}
+                    className={field}
+                  />
+                </div>
+              </div>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={label}>Status</label>

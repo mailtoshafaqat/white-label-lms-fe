@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContentPageHowItWorks } from "@/components/admin-how-it-works-guide";
 import { AdminNav } from "@/components/admin-nav";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -24,14 +25,17 @@ import {
   adminApi,
   type BundleDto,
   type SubjectDto,
+  type SubjectDefinitionDto,
   type UnitDto,
   type TopicDto,
 } from "@/lib/api";
 import { getSession, isAdmin, canManageInstitute, type TenantFeatures } from "@/lib/auth";
 import {
   parseProductProfile,
+  profileBundleInPhrase,
   profileBundleLabel,
   profileBundleLabelPlural,
+  profileBundleLabelTitle,
   quickAddTopicExamples,
 } from "@/lib/product-profile";
 import { useClientMounted } from "@/lib/use-auth-session";
@@ -237,6 +241,107 @@ function InlineRename({
   );
 }
 
+function AddBatchSubject({
+  bundleId,
+  catalog,
+  existingDefinitionIds,
+  order,
+  tenant,
+  onCreated,
+}: {
+  bundleId: string;
+  catalog: SubjectDefinitionDto[];
+  existingDefinitionIds: Set<string>;
+  order: number;
+  tenant?: TenantFeatures | null;
+  onCreated: (subject: SubjectDto) => void;
+}) {
+  const bundlePhrase = profileBundleInPhrase(tenant);
+  const available = catalog.filter((d) => d.isActive && !existingDefinitionIds.has(d.id));
+  const [definitionId, setDefinitionId] = useState("");
+  const [includeShared, setIncludeShared] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!definitionId) return;
+    setBusy(true);
+    try {
+      const def = catalog.find((d) => d.id === definitionId);
+      const s = await adminApi.createSubject(bundleId, {
+        title: def?.displayName ?? "",
+        order,
+        subjectDefinitionId: definitionId,
+        includeSharedContent: includeShared && (def?.libraryUnitCount ?? 0) > 0,
+      });
+      onCreated(s);
+      setDefinitionId("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (catalog.length === 0) {
+    return (
+      <p className="text-xs text-slate-600">
+        No subjects in catalog.{" "}
+        <a href="/admin/subjects" className="font-medium text-[var(--brand)] hover:underline">
+          Add subjects to the catalog
+        </a>{" "}
+        first, then return here.
+      </p>
+    );
+  }
+
+  if (available.length === 0) {
+    return (
+      <p className="text-xs text-slate-500">
+        All catalog subjects are already in {bundlePhrase}. Add more in{" "}
+        <a href="/admin/subjects" className="text-[var(--brand)] hover:underline">
+          Subject catalog
+        </a>
+        .
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={definitionId}
+          onChange={(e) => setDefinitionId(e.target.value)}
+          className="h-8 min-w-[12rem] flex-1 rounded-md border border-slate-300 px-2 text-sm"
+        >
+          <option value="">Select subject…</option>
+          {available.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.displayName}
+            </option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void submit()}
+          disabled={busy || !definitionId}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </Button>
+      </div>
+      {definitionId && (
+        <label className="flex items-center gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={includeShared}
+            onChange={(e) => setIncludeShared(e.target.checked)}
+          />
+          Include shared library content for this catalog subject
+        </label>
+      )}
+    </div>
+  );
+}
+
 function InlineAdd({ label, onAdd }: { label: string; onAdd: (title: string) => Promise<void> }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -278,6 +383,8 @@ function QuickAddTopic({
   onCreated: (topicId: string) => void;
 }) {
   const examples = quickAddTopicExamples(tenant);
+  const bundleLabel = profileBundleLabel(tenant);
+  const bundleLabelTitle = profileBundleLabelTitle(tenant);
   const [bundleId, setBundleId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [unitId, setUnitId] = useState("");
@@ -356,10 +463,10 @@ function QuickAddTopic({
     <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
       <h2 className="text-sm font-semibold text-slate-900">Quick add topic</h2>
       <p className="mt-0.5 text-xs text-slate-600">
-        Each dropdown is a different level: <strong>bundle</strong> is your{" "}
-        {profileBundleLabel(tenant)} (e.g. {examples.bundle}), <strong>subject</strong> is the
+        Each dropdown is a different level: <strong>{bundleLabel}</strong> is your{" "}
+        {bundleLabel} (e.g. {examples.bundle}), <strong>subject</strong> is the
         discipline or module inside it (e.g. {examples.subject}). Their titles are not meant to
-        match. Pick bundle → subject → unit, then enter the topic name.
+        match. Pick {bundleLabel} → subject → unit, then enter the topic name.
       </p>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       {(bundleTitle || subjectTitle || unitTitle) && (
@@ -371,7 +478,7 @@ function QuickAddTopic({
       <form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={submit}>
         <div>
           <label htmlFor="quick-bundle" className="mb-1 block text-xs font-medium text-slate-700">
-            Bundle
+            {bundleLabelTitle}
           </label>
           <select
             id="quick-bundle"
@@ -380,7 +487,7 @@ function QuickAddTopic({
             className={selectCls}
             required
           >
-            <option value="">Select bundle…</option>
+            <option value="">Select {bundleLabel}…</option>
             {bundles.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.title}
@@ -496,10 +603,15 @@ function UnitNode({
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         <LevelBadge level="Unit" />
+        {unit.isShared && (
+          <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-sky-700">
+            shared
+          </span>
+        )}
         <InlineRename
           value={unit.title}
           className="text-sm text-slate-700"
-          editable={canRenameStructure}
+          editable={canRenameStructure && !unit.isShared}
           onSave={async (next) => {
             const updated = await adminApi.updateUnit(unit.id, { title: next });
             onRenamed?.(updated);
@@ -515,21 +627,23 @@ function UnitNode({
         >
           Tests
         </Link>
-        <button
-          type="button"
-          onClick={() =>
-            onRequestDelete({
-              kind: "unit",
-              id: unit.id,
-              title: unit.title,
-              onDone: onDeleted,
-            })
-          }
-          className="text-slate-400 hover:text-red-600"
-          title="Delete unit"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {!unit.isShared && (
+          <button
+            type="button"
+            onClick={() =>
+              onRequestDelete({
+                kind: "unit",
+                id: unit.id,
+                title: unit.title,
+                onDone: onDeleted,
+              })
+            }
+            className="text-slate-400 hover:text-red-600"
+            title="Delete unit"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       {open && (
         <div className="space-y-1 pb-2">
@@ -590,19 +704,20 @@ function UnitNode({
 
 function SubjectNode({
   subject,
+  tenant,
   onRequestDelete,
   onDeleted,
   canDelete,
-  canRenameSubject,
-  onRenamed,
+  canRenameStructure,
 }: {
   subject: SubjectDto;
+  tenant?: TenantFeatures | null;
   onRequestDelete: (pending: PendingDelete) => void;
   onDeleted: () => void;
   canDelete: boolean;
-  canRenameSubject: boolean;
-  onRenamed?: (subject: SubjectDto) => void;
+  canRenameStructure: boolean;
 }) {
+  const bundlePhrase = profileBundleInPhrase(tenant);
   const [open, setOpen] = useState(false);
   const [units, setUnits] = useState<UnitDto[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -623,18 +738,21 @@ function SubjectNode({
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
         <LevelBadge level="Subject" />
-        {canRenameSubject ? (
-          <InlineRename
-            value={subject.title}
-            className="text-sm font-medium text-slate-800"
-            editable={canRenameSubject}
-            onSave={async (next) => {
-              const updated = await adminApi.updateSubject(subject.id, { title: next });
-              onRenamed?.(updated);
-            }}
-          />
+        <span className="text-sm font-medium text-slate-800">{subject.title}</span>
+        {subject.linkedToCatalog ? (
+          <span
+            className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand)]"
+            title="Name comes from Subject catalog. To swap subjects, remove this and pick another from the dropdown below."
+          >
+            catalog
+          </span>
         ) : (
-          <span className="text-sm font-medium text-slate-800">{subject.title}</span>
+          <span
+            className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+            title="Delete and re-add from the catalog dropdown"
+          >
+            legacy
+          </span>
         )}
         <span className="text-xs text-slate-400" title="Units inside this subject">
           · {childCountLabel(subject.unitCount, "unit")}
@@ -650,10 +768,15 @@ function SubjectNode({
                 onDone: onDeleted,
               })
             }
-            className="ml-auto text-slate-400 hover:text-red-600"
-            title="Delete subject"
+            className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-red-50 hover:text-red-700"
+            title={
+              subject.linkedToCatalog
+                ? `Remove from ${bundlePhrase}, then pick the correct subject from the catalog dropdown`
+                : `Remove subject from ${bundlePhrase}`
+            }
           >
             <Trash2 className="h-3.5 w-3.5" />
+            Remove
           </button>
         )}
       </div>
@@ -663,7 +786,7 @@ function SubjectNode({
             <UnitNode
               key={u.id}
               unit={u}
-              canRenameStructure={canRenameSubject}
+              canRenameStructure={canRenameStructure}
               onRequestDelete={onRequestDelete}
               onDeleted={() => setUnits((prev) => prev.filter((x) => x.id !== u.id))}
               onRenamed={(updated) =>
@@ -688,21 +811,26 @@ function SubjectNode({
 
 function BundleNode({
   bundle,
+  tenant,
   onRequestDelete,
   allowedSubjectIds,
   manageStructure,
   searchQuery,
   bundlePriceEdit,
   onPriceUpdated,
+  catalog,
 }: {
   bundle: BundleDto;
+  tenant?: TenantFeatures | null;
   onRequestDelete: (pending: PendingDelete) => void;
   allowedSubjectIds: Set<string> | null;
   manageStructure: boolean;
   searchQuery: string;
   bundlePriceEdit: boolean;
   onPriceUpdated: (id: string, price: number) => void;
+  catalog: SubjectDefinitionDto[];
 }) {
+  const bundleLabelTitle = profileBundleLabelTitle(tenant);
   const [open, setOpen] = useState(false);
   const [subjects, setSubjects] = useState<SubjectDto[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -747,7 +875,7 @@ function BundleNode({
           {open ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-          Bundle
+          {bundleLabelTitle}
         </span>
         <span className="font-semibold text-slate-900">{bundle.title}</span>
         {bundlePriceEdit && manageStructure ? (
@@ -826,33 +954,37 @@ function BundleNode({
       {open && (
         <div className="mt-2">
           {subjects.length === 0 ? (
-            <p className="ml-4 text-sm text-slate-500">No assigned subjects in this bundle.</p>
+            <p className="ml-4 text-sm text-slate-500">
+              No assigned subjects in {profileBundleInPhrase(tenant)}.
+            </p>
           ) : (
             subjects.map((s) => (
               <SubjectNode
                 key={s.id}
                 subject={s}
+                tenant={tenant}
                 canDelete={manageStructure}
-                canRenameSubject={manageStructure}
+                canRenameStructure={manageStructure}
                 onRequestDelete={onRequestDelete}
                 onDeleted={() => setSubjects((prev) => prev.filter((x) => x.id !== s.id))}
-                onRenamed={(updated) =>
-                  setSubjects((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
-                }
               />
             ))
           )}
           {manageStructure && (
             <div className="ml-4 mt-1">
-              <InlineAdd
-                label="New subject title"
-                onAdd={async (title) => {
-                  const s = await adminApi.createSubject(bundle.id, {
-                    title,
-                    order: subjects.length + 1,
-                  });
-                  setSubjects((prev) => [...prev, s]);
-                }}
+              <AddBatchSubject
+                bundleId={bundle.id}
+                tenant={tenant}
+                catalog={catalog}
+                existingDefinitionIds={
+                  new Set(
+                    subjects
+                      .map((s) => s.subjectDefinitionId)
+                      .filter((id): id is string => Boolean(id))
+                  )
+                }
+                order={subjects.length + 1}
+                onCreated={(s) => setSubjects((prev) => [...prev, s])}
               />
             </div>
           )}
@@ -877,6 +1009,7 @@ export default function AdminPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [bundlePriceEdit, setBundlePriceEdit] = useState(false);
   const [tenant, setTenant] = useState<TenantFeatures | null>(null);
+  const [catalog, setCatalog] = useState<SubjectDefinitionDto[]>([]);
   const mounted = useClientMounted();
   const profileTenant = mounted ? tenant : null;
 
@@ -914,9 +1047,11 @@ export default function AdminPage() {
     Promise.all([
       load,
       institute ? adminApi.getBranding().catch(() => null) : Promise.resolve(null),
+      institute ? adminApi.listSubjectDefinitions(true).catch(() => []) : Promise.resolve([]),
     ])
-      .then(([, branding]) => {
+      .then(([, branding, catalogItems]) => {
         if (branding) setBundlePriceEdit(branding.bundlePriceEditEnabled);
+        if (catalogItems) setCatalog(catalogItems);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -1006,7 +1141,11 @@ export default function AdminPage() {
           {manageStructure ? (
             <>
               Set up your course tree ({profileBundleLabel(profileTenant)} → subject → unit → topic).
-              Use the pencil to rename structure; teachers use{" "}
+              Subjects come from the{" "}
+              <a href="/admin/subjects" className="font-medium text-[var(--brand)] hover:underline">
+                subject catalog
+              </a>
+              . Use the pencil to rename units and topics; teachers use{" "}
               <span className="font-medium text-slate-700">Content</span> to add lectures, notes,
               MCQs and flashcards.
               {parseProductProfile(profileTenant?.productProfile) === "GeneralLms"
@@ -1021,6 +1160,8 @@ export default function AdminPage() {
             </>
           )}
         </p>
+
+        <ContentPageHowItWorks manageStructure={manageStructure} />
 
         {error && (
           <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
@@ -1127,10 +1268,12 @@ export default function AdminPage() {
               <BundleNode
                 key={b.id}
                 bundle={b}
+                tenant={profileTenant}
                 allowedSubjectIds={allowedSubjectIds}
                 manageStructure={manageStructure}
                 searchQuery={searchQuery}
                 bundlePriceEdit={bundlePriceEdit}
+                catalog={catalog}
                 onPriceUpdated={(id, price) =>
                   setBundles((prev) =>
                     prev.map((x) => (x.id === id ? { ...x, price } : x))

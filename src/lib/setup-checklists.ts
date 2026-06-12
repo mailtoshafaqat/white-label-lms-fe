@@ -340,7 +340,9 @@ export async function fetchInstituteChecklistAuto(): Promise<InstituteChecklistA
     hasCourseTree: bundles.some((b) => b.subjectCount > 0) && hasTopics,
     hasTopicContent,
     hasTeacher: teachers.total > 0,
-    hasTeacherAssignments: assignments.some((a) => a.subjectIds.length > 0),
+    hasTeacherAssignments: assignments.some(
+      (a) => a.subjectIds.length > 0 || (a.subjectDefinitionIds?.length ?? 0) > 0
+    ),
     hasStudent: students.total > 0,
     hasLiveClass: liveClasses.total > 0,
   };

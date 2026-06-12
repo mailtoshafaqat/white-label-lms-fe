@@ -3,22 +3,44 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { PlayCircle, Trophy, Video, BookOpen, Layers, CheckCircle2, BookX, Brain, MessageCircleQuestion, Medal } from "lucide-react";
+import {
+  PlayCircle,
+  Trophy,
+  Video,
+  BookOpen,
+  Layers,
+  BookX,
+  Brain,
+  MessageCircleQuestion,
+  Medal,
+  Bookmark,
+  Target,
+  Flame,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  Zap,
+  Calendar,
+  ArrowRight,
+} from "lucide-react";
 import { BrandHeader } from "@/components/brand-header";
-import { loadAndApplyBranding, getTenantSlug, type BrandingDto } from "@/lib/branding";
+import { GlobalSearch } from "@/components/global-search";
+import { loadAndApplyBranding, getTenantSlug, mentorLabel, type BrandingDto } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  authApi,
+  API_BASE_URL,
   coursesApi,
   progressApi,
   enrollmentApi,
   liveClassesApi,
   type BundleDto,
   type TopicDto,
-  type GradeDto,
   type LeaderboardRowDto,
   type EnrollmentDto,
   type LiveClassDto,
+  type DashboardOverviewDto,
 } from "@/lib/api";
 import { canStudentJoinLiveClass, liveClassJoinHint } from "@/lib/live-class-utils";
 import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll } from "@/lib/auth";
@@ -33,6 +55,15 @@ import {
 type LeaderboardSize = 5 | 10;
 
 const LEADERBOARD_SIZE_KEY = "leaderboardTake";
+
+const SUBJECT_BAR_COLORS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-rose-500",
+  "bg-cyan-500",
+];
 
 function readLeaderboardSize(): LeaderboardSize {
   return localStorage.getItem(LEADERBOARD_SIZE_KEY) === "5" ? 5 : 10;
@@ -52,16 +83,59 @@ function rankBadgeClass(rank: number): string {
   return "bg-slate-50 text-slate-600 ring-slate-200";
 }
 
+function timeGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] || fullName;
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+}) {
+  return (
+    <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+            {sub && <div className="mt-1.5 text-xs text-slate-500">{sub}</div>}
+          </div>
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${accent}`}>
+            <Icon className="h-5 w-5 text-white" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const authSession = useAuthSession();
   const [name, setName] = useState("");
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [admin, setAdmin] = useState(false);
   const [superAdmin, setSuperAdmin] = useState(false);
   const [selfEnroll, setSelfEnroll] = useState(false);
   const [bundles, setBundles] = useState<BundleDto[]>([]);
   const [topics, setTopics] = useState<TopicDto[]>([]);
-  const [grades, setGrades] = useState<GradeDto[]>([]);
+  const [overview, setOverview] = useState<DashboardOverviewDto | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRowDto[]>([]);
   const [leaderboardTake, setLeaderboardTake] = useState<LeaderboardSize>(10);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
@@ -91,6 +165,10 @@ export default function DashboardPage() {
       return;
     }
     setName(session.fullName);
+    void authApi.me().then((p) => {
+      setName(p.fullName);
+      setProfilePictureUrl(p.profilePictureUrl);
+    });
     setAdmin(isAdmin(session));
     setSuperAdmin(isSuperAdmin(session));
     setSelfEnroll(canSelfEnroll(session));
@@ -101,14 +179,14 @@ export default function DashboardPage() {
     Promise.all([
       coursesApi.bundles(),
       coursesApi.recentTopics(3),
-      progressApi.myGrades(),
+      progressApi.dashboard(),
       enrollmentApi.myEnrollments(),
       liveClassesApi.mine(),
     ])
-      .then(([b, t, g, e, lc]) => {
+      .then(([b, t, dash, e, lc]) => {
         setBundles(b);
         setTopics(t);
-        setGrades(g);
+        setOverview(dash);
         setEnrollments(e);
         setLiveClasses(lc);
       })
@@ -139,6 +217,8 @@ export default function DashboardPage() {
     try {
       const e = await enrollmentApi.enroll(bundleId);
       setEnrollments((prev) => [e, ...prev]);
+      const dash = await progressApi.dashboard();
+      setOverview(dash);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enroll failed");
     } finally {
@@ -151,190 +231,278 @@ export default function DashboardPage() {
     router.replace("/login");
   }
 
+  const academyName = branding?.displayName ?? authSession?.tenant?.tenantName ?? "your academy";
+  const primaryCourse =
+    overview?.bundleProgress[0]?.bundleTitle ??
+    enrollments[0]?.bundleTitle ??
+    bundles.find((b) => enrollments.some((e) => e.bundleId === b.id))?.title;
+  const weeklyMax = Math.max(...(overview?.weeklyTrend.map((d) => d.accuracy) ?? [0]), 1);
+
+  const quickActions = [
+    { href: "/bookmarks", label: "Bookmarks", icon: Bookmark, show: true },
+    {
+      href: "/weakness-quiz",
+      label: "Weakness quiz",
+      icon: Target,
+      show: hasMistakeDiary(authSession?.tenant),
+    },
+    {
+      href: "/mistakes",
+      label: "Mistake diary",
+      icon: BookX,
+      show: hasMistakeDiary(authSession?.tenant),
+    },
+    {
+      href: "/mentor",
+      label: mentorLabel(branding),
+      icon: Brain,
+      show: hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled),
+    },
+    {
+      href: "/doubts",
+      label: "Ask teacher",
+      icon: MessageCircleQuestion,
+      show: hasDoubts(authSession?.tenant),
+    },
+    { href: "#leaderboard", label: "Leaderboard", icon: Trophy, show: true },
+    ...(hasMockExams(authSession?.tenant)
+      ? [{ href: "/mock-exams", label: "Mock exams", icon: Medal, show: true }]
+      : []),
+  ].filter((a) => a.show);
+
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-4">
-        <BrandHeader branding={branding} />
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-600">Hi, {name || "there"}</span>
-          {superAdmin && (
-            <Link href="/superadmin" className="font-medium text-slate-800 hover:underline">
-              Platform
+    <div className="min-h-screen bg-gradient-to-b from-slate-100/80 via-white to-slate-50">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+          <BrandHeader branding={branding} />
+          <div className="flex items-center gap-3 text-sm">
+            {superAdmin && (
+              <Link href="/superadmin" className="font-medium text-slate-800 hover:underline">
+                Platform
+              </Link>
+            )}
+            {admin && !superAdmin && (
+              <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
+                Admin
+              </Link>
+            )}
+            <Link href="/account/password" className="hidden text-slate-500 hover:text-slate-800 sm:inline">
+              Password
             </Link>
-          )}
-          {admin && !superAdmin && (
-            <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
-              Admin
-            </Link>
-          )}
-          <Link href="/account/password" className="text-slate-500 hover:text-slate-800">
-            Change password
-          </Link>
-          <button onClick={logout} className="text-slate-500 hover:text-slate-800">
-            Log out
-          </button>
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-sm font-semibold text-white">
-            {(name || "A").charAt(0).toUpperCase()}
+            <button onClick={logout} className="text-slate-500 hover:text-slate-800">
+              Log out
+            </button>
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[var(--brand)] text-sm font-semibold text-white ring-2 ring-white shadow">
+              {profilePictureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={
+                    profilePictureUrl.startsWith("http")
+                      ? profilePictureUrl
+                      : `${API_BASE_URL}${profilePictureUrl}`
+                  }
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials(name || "A")
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-slate-600">
-          Continue where you left off.
-          {hasMockExams(authSession?.tenant) && (
-            <>
-              {" "}
-              <Link href="/mock-exams" className="font-medium text-[var(--brand)] hover:underline">
-                Mock exams
-              </Link>
-            </>
-          )}
-        </p>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6">
+          <GlobalSearch />
+        </div>
 
         {error && (
-          <p className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-            {error} — is the API running on port 5237?
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {error}
           </p>
         )}
 
-        <section className="mt-6 grid gap-4 sm:grid-cols-2">
-          {loading ? (
-            <p className="text-slate-500">Loading courses…</p>
-          ) : (
-            bundles.map((b) => {
-              const enrolled = enrollments.find((e) => e.bundleId === b.id);
-              return (
-                <Card key={b.id}>
-                  <CardHeader>
-                    <CardTitle>{b.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between text-sm text-slate-600">
-                      <span>{b.subjectCount} subjects</span>
-                      <span>Rs. {b.price.toLocaleString()}</span>
-                    </div>
-                    <div className="mt-4">
-                      {enrolled ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Enrolled · expires{" "}
-                          {new Date(enrolled.expiresAt).toLocaleDateString()}
-                        </span>
-                      ) : selfEnroll ? (
-                        <Button
-                          size="sm"
-                          onClick={() => enroll(b.id)}
-                          disabled={enrolling === b.id}
-                        >
-                          {enrolling === b.id ? "Enrolling…" : "Enroll"}
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          Contact your institute to enroll
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-        </section>
-
-        <section className="mt-8">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Continue learning</h2>
+        {/* Hero */}
+        <section className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-900 via-slate-800 to-[var(--brand)] p-6 text-white shadow-lg sm:p-8">
+          <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-[var(--brand)]/30 blur-2xl" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-medium text-white/70">{academyName}</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+                {timeGreeting()}, {firstName(name || "there")}
+              </h1>
+              <p className="mt-2 max-w-xl text-sm text-white/80 sm:text-base">
+                {primaryCourse ? (
+                  <>
+                    You&apos;re enrolled in <strong className="text-white">{primaryCourse}</strong>.
+                    {overview && overview.overallAccuracy > 0
+                      ? " Keep practicing to climb the leaderboard."
+                      : " Take your first quiz to unlock your performance stats."}
+                  </>
+                ) : (
+                  "Explore courses below and start your learning journey."
+                )}
+              </p>
+            </div>
             <div className="flex flex-wrap gap-3">
-              {hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled) && (
-                <Link
-                  href="/mentor"
-                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-                >
-                  <Brain className="h-4 w-4" /> Syllabus Mentor
-                </Link>
+              {overview && overview.practiceStreakDays > 0 && (
+                <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">
+                  <Flame className="h-5 w-5 text-orange-300" />
+                  <div>
+                    <p className="text-lg font-bold leading-none">{overview.practiceStreakDays}</p>
+                    <p className="text-xs text-white/70">day streak</p>
+                  </div>
+                </div>
               )}
-              {hasDoubts(authSession?.tenant) && (
-                <Link
-                  href="/doubts"
-                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-                >
-                  <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
-                </Link>
-              )}
-              {hasMistakeDiary(authSession?.tenant) && (
-                <Link
-                  href="/mistakes"
-                  className="flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline"
-                >
-                  <BookX className="h-4 w-4" /> Mistake diary
-                </Link>
+              {overview?.instituteRank != null && (
+                <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">
+                  <Trophy className="h-5 w-5 text-amber-300" />
+                  <div>
+                    <p className="text-lg font-bold leading-none">#{overview.instituteRank}</p>
+                    <p className="text-xs text-white/70">institute rank</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {topics.map((t) => (
-              <Link key={t.id} href={`/topic/${t.id}`}>
-                <Card className="transition-shadow hover:shadow-md">
-                  <CardContent className="pt-5">
-                    <PlayCircle className="h-8 w-8 text-[var(--brand)]" />
-                    <h3 className="mt-3 font-semibold text-slate-900">{t.title}</h3>
-                    <div className="mt-2 flex gap-4 text-xs text-slate-500">
-                      {t.hasVideo && (
-                        <span className="flex items-center gap-1">
-                          <Video className="h-3.5 w-3.5" /> Video
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <BookOpen className="h-3.5 w-3.5" /> {t.mcqCount} MCQs
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Layers className="h-3.5 w-3.5" /> {t.flashcardCount} cards
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
         </section>
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>My Grades</CardTitle>
+        {/* Quick actions */}
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {quickActions.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-[var(--brand)]/40 hover:text-[var(--brand)]"
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </Link>
+          ))}
+        </div>
+
+        {/* KPI cards */}
+        <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
+            ))
+          ) : (
+            <>
+              <StatCard
+                label="Overall accuracy"
+                value={overview ? `${overview.overallAccuracy}%` : "—"}
+                sub={
+                  overview && overview.accuracyChangeThisWeek !== 0 ? (
+                    <span
+                      className={
+                        overview.accuracyChangeThisWeek > 0
+                          ? "inline-flex items-center gap-0.5 text-emerald-600"
+                          : "inline-flex items-center gap-0.5 text-red-600"
+                      }
+                    >
+                      {overview.accuracyChangeThisWeek > 0 ? (
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5" />
+                      )}
+                      {overview.accuracyChangeThisWeek > 0 ? "+" : ""}
+                      {overview.accuracyChangeThisWeek}% this week
+                    </span>
+                  ) : (
+                    "Best score per quiz averaged"
+                  )
+                }
+                icon={Target}
+                accent="bg-gradient-to-br from-blue-500 to-blue-600"
+              />
+              <StatCard
+                label="MCQs attempted"
+                value={overview ? overview.mcqsAttemptedThisMonth.toLocaleString() : "0"}
+                sub="This month"
+                icon={Zap}
+                accent="bg-gradient-to-br from-violet-500 to-violet-600"
+              />
+              <StatCard
+                label="Institute rank"
+                value={
+                  overview?.instituteRank != null ? `#${overview.instituteRank}` : "—"
+                }
+                sub={
+                  overview && overview.instituteStudentCount > 0
+                    ? `of ${overview.instituteStudentCount} active students`
+                    : "Take a quiz to get ranked"
+                }
+                icon={Trophy}
+                accent="bg-gradient-to-br from-amber-500 to-orange-500"
+              />
+              <StatCard
+                label="Practice streak"
+                value={overview ? `${overview.practiceStreakDays}` : "0"}
+                sub={overview?.practiceStreakDays === 1 ? "day in a row" : "days in a row"}
+                icon={Flame}
+                accent="bg-gradient-to-br from-rose-500 to-pink-600"
+              />
+            </>
+          )}
+        </section>
+
+        {/* Analytics row */}
+        <section className="mt-6 grid gap-6 lg:grid-cols-5">
+          <Card className="border-slate-200/80 shadow-sm lg:col-span-3">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3 className="h-4 w-4 text-[var(--brand)]" />
+                Subject accuracy
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {grades.length === 0 ? (
+            <CardContent>
+              {!overview || overview.subjectAccuracy.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No attempts yet. Take a Daily Practice Test to see your grades here.
+                  Complete topic quizzes to see which subjects need more work.
                 </p>
               ) : (
-                grades.map((g, i) => (
-                  <div key={`${g.quizId}-${i}`}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-800">{g.quizTitle}</span>
-                      <span className="text-slate-600">
-                        {g.score}/{g.total} ({g.percentage}%)
-                      </span>
+                <div className="space-y-4">
+                  {overview.subjectAccuracy.map((s, i) => (
+                    <div key={s.subjectId}>
+                      <div className="mb-1.5 flex items-center justify-between text-sm">
+                        <span className="font-medium text-slate-800">{s.subjectTitle}</span>
+                        <span className="font-semibold text-slate-700">{s.accuracy}%</span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full transition-all ${SUBJECT_BAR_COLORS[i % SUBJECT_BAR_COLORS.length]}`}
+                          style={{ width: `${Math.max(s.accuracy, 4)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
-                      <div
-                        className="h-1.5 rounded-full bg-[var(--brand)]"
-                        style={{ width: `${g.percentage}%` }}
-                      />
+                  ))}
+                  {overview.weakestSubject && hasMistakeDiary(authSession?.tenant) && (
+                    <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200/80 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-amber-900">
+                        <strong>{overview.weakestSubject.subjectTitle}</strong> is your weakest
+                        subject — start a targeted quiz to improve.
+                      </p>
+                      <Link href="/weakness-quiz">
+                        <Button size="sm" className="shrink-0 gap-1">
+                          Start quiz <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
                     </div>
-                  </div>
-                ))
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-1">
-            <CardHeader className="space-y-3 pb-3">
+          <Card id="leaderboard" className="border-slate-200/80 shadow-sm lg:col-span-2">
+            <CardHeader className="space-y-3 pb-2">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-amber-500" /> Leaderboard
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  Leaderboard
                 </CardTitle>
                 <div
                   className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs"
@@ -357,9 +525,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-slate-500">
-                Best score per quiz, summed — top {leaderboardTake} in your institute
-              </p>
+              <p className="text-xs text-slate-500">This week · your institute</p>
             </CardHeader>
             <CardContent>
               {leaderboardLoading ? (
@@ -371,37 +537,38 @@ export default function DashboardPage() {
                   {leaderboard.map((l) => (
                     <li
                       key={l.userId}
-                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ${
+                      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
                         l.isMe
-                          ? "border-[var(--brand)]/30 bg-[var(--brand)]/5 ring-1 ring-[var(--brand)]/20"
+                          ? "border-[var(--brand)]/40 bg-[var(--brand)]/5 ring-1 ring-[var(--brand)]/20"
                           : "border-slate-100 bg-white"
                       }`}
                     >
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ${rankBadgeClass(l.rank)}`}
-                        aria-hidden
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-1 ${rankBadgeClass(l.rank)}`}
                       >
                         {l.rank <= 3 ? (
-                          <Medal className={`h-4 w-4 ${l.rank === 1 ? "text-amber-600" : l.rank === 2 ? "text-slate-600" : "text-orange-600"}`} />
+                          <Medal
+                            className={`h-3.5 w-3.5 ${l.rank === 1 ? "text-amber-600" : l.rank === 2 ? "text-slate-600" : "text-orange-600"}`}
+                          />
                         ) : (
                           l.rank
                         )}
                       </span>
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
                           l.isMe ? "bg-[var(--brand)] text-white" : "bg-slate-100 text-slate-600"
                         }`}
-                        aria-hidden
                       >
                         {initials(l.isMe ? name || l.name : l.name)}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className={`truncate text-sm ${l.isMe ? "font-semibold text-slate-900" : "font-medium text-slate-800"}`}>
-                          {l.isMe ? "You" : l.name}
+                        <p
+                          className={`truncate text-sm ${l.isMe ? "font-semibold text-slate-900" : "font-medium text-slate-800"}`}
+                        >
+                          {l.isMe ? `You — ${firstName(name || l.name)}` : l.name}
                         </p>
-                        <p className="text-xs text-slate-500">Rank #{l.rank}</p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                      <span className="shrink-0 text-xs font-semibold text-amber-700">
                         {l.points.toLocaleString()} pts
                       </span>
                     </li>
@@ -410,36 +577,81 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+        </section>
 
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Video className="h-4 w-4 text-[var(--brand)]" /> Live classes
+        {/* Weekly trend + live classes */}
+        <section className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Card className="border-slate-200/80 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <TrendingUp className="h-4 w-4 text-[var(--brand)]" />
+                Weekly score trend
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!overview || overview.weeklyTrend.every((d) => d.attempts === 0) ? (
+                <p className="text-sm text-slate-500">Your daily accuracy will appear here after you practice.</p>
+              ) : (
+                <div className="flex h-36 items-end justify-between gap-2 pt-2">
+                  {overview.weeklyTrend.map((day) => (
+                    <div key={day.dayLabel} className="flex flex-1 flex-col items-center gap-1">
+                      <span className="text-[10px] font-medium text-slate-500">
+                        {day.attempts > 0 ? `${day.accuracy}%` : ""}
+                      </span>
+                      <div className="flex w-full flex-1 items-end">
+                        <div
+                          className="w-full rounded-t-md bg-gradient-to-t from-[var(--brand)] to-[var(--brand)]/60 transition-all"
+                          style={{
+                            height: `${Math.max((day.accuracy / weeklyMax) * 100, day.attempts > 0 ? 8 : 2)}%`,
+                            minHeight: day.attempts > 0 ? "0.5rem" : "0.25rem",
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-500">{day.dayLabel}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/80 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Video className="h-4 w-4 text-[var(--brand)]" />
+                Live classes
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {liveClasses.length === 0 ? (
                 <p className="text-sm text-slate-500">No upcoming classes for your courses.</p>
               ) : (
-                liveClasses.map((c) => (
-                  <div key={c.id} className="rounded-md border border-slate-100 p-3">
+                liveClasses.slice(0, 3).map((c) => (
+                  <div
+                    key={c.id}
+                    className={`rounded-xl border p-3 ${
+                      c.state === "Live"
+                        ? "border-red-200 bg-red-50/50"
+                        : "border-slate-100 bg-slate-50/50"
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-slate-800">{c.title}</p>
                       {c.state === "Live" && (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                           Live
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {c.subjectTitle} · {c.hostName} · {new Date(c.scheduledStartUtc).toLocaleString()}
+                    <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                      <Calendar className="h-3 w-3" />
+                      {c.subjectTitle} · {new Date(c.scheduledStartUtc).toLocaleString()}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2">
                       {c.state !== "Ended" && c.state !== "Cancelled" && (
                         canStudentJoinLiveClass(c.state) ? (
                           <Button
                             size="sm"
-                            variant="default"
                             onClick={async () => {
                               try {
                                 const res = await liveClassesApi.recordJoin(c.id);
@@ -458,27 +670,125 @@ export default function DashboardPage() {
                             disabled
                             title={liveClassJoinHint(c.state, c.scheduledStartUtc)}
                           >
-                            Join when live
+                            Set reminder
                           </Button>
                         )
                       )}
-                      {c.recordingUrl && (
-                        <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer">
-                          <Button size="sm" variant="outline">
-                            Watch recording
-                          </Button>
-                        </a>
-                      )}
                     </div>
-                    {c.passcode && (
-                      <p className="mt-1 text-xs text-slate-400">Passcode: {c.passcode}</p>
-                    )}
                   </div>
                 ))
               )}
             </CardContent>
           </Card>
         </section>
+
+        {/* Courses */}
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-slate-900">My courses</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {loading ? (
+              <p className="text-slate-500">Loading courses…</p>
+            ) : (
+              bundles.map((b) => {
+                const enrolled = enrollments.find((e) => e.bundleId === b.id);
+                const progress = overview?.bundleProgress.find((p) => p.bundleId === b.id);
+                return (
+                  <Card
+                    key={b.id}
+                    className={`overflow-hidden border-slate-200/80 shadow-sm transition hover:shadow-md ${
+                      enrolled ? "ring-1 ring-[var(--brand)]/10" : ""
+                    }`}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-base leading-snug">{b.title}</CardTitle>
+                        {enrolled && (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                            Enrolled
+                          </span>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between text-sm text-slate-600">
+                        <span>{b.subjectCount} subjects</span>
+                        {!enrolled && <span>Rs. {b.price.toLocaleString()}</span>}
+                      </div>
+                      {enrolled && progress && progress.topicsTotal > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-1 flex justify-between text-xs text-slate-500">
+                            <span>{progress.percentComplete}% complete</span>
+                            <span>
+                              {progress.topicsTotal - progress.topicsCompleted} topics remaining
+                            </span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-[var(--brand)] to-[var(--brand)]/70"
+                              style={{ width: `${progress.percentComplete}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {enrolled && (
+                        <p className="mt-3 text-xs text-slate-500">
+                          Expires {new Date(enrolled.expiresAt).toLocaleDateString()}
+                        </p>
+                      )}
+                      <div className="mt-4">
+                        {enrolled ? null : selfEnroll ? (
+                          <Button
+                            size="sm"
+                            onClick={() => enroll(b.id)}
+                            disabled={enrolling === b.id}
+                          >
+                            {enrolling === b.id ? "Enrolling…" : "Enroll"}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            Contact your institute to enroll
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        {/* Continue learning */}
+        {topics.length > 0 && (
+          <section className="mt-8">
+            <h2 className="text-lg font-semibold text-slate-900">Continue learning</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              {topics.map((t) => (
+                <Link key={t.id} href={`/topic/${t.id}`}>
+                  <Card className="h-full border-slate-200/80 shadow-sm transition hover:border-[var(--brand)]/30 hover:shadow-md">
+                    <CardContent className="pt-5">
+                      <PlayCircle className="h-8 w-8 text-[var(--brand)]" />
+                      <h3 className="mt-3 font-semibold text-slate-900">{t.title}</h3>
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                        {t.hasVideo && (
+                          <span className="flex items-center gap-1">
+                            <Video className="h-3.5 w-3.5" /> Video
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <BookOpen className="h-3.5 w-3.5" /> {t.mcqCount} MCQs
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Layers className="h-3.5 w-3.5" /> {t.flashcardCount} cards
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

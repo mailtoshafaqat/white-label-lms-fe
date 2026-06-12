@@ -97,8 +97,16 @@ export default function FlashcardsPage({
           </div>
         )}
 
-        {deck && cards.length === 0 && (
-          <p className="text-slate-500">No flashcards for this topic yet.</p>
+        {!loading && !error && deck && cards.length === 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+            <p className="text-slate-700">No flashcards for this topic yet.</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Your teacher has not added flashcards here. Check back later or return to the topic.
+            </p>
+            <Button asChild className="mt-6" variant="outline">
+              <Link href={`/topic/${topicId}`}>Back to topic</Link>
+            </Button>
+          </div>
         )}
       </main>
     </div>

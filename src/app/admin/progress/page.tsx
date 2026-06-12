@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BarChart3, ChevronDown, ChevronRight, ExternalLink, Medal } from "lucide-react";
+import {
+  BarChart3,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Medal,
+  Target,
+  Users,
+  AlertTriangle,
+  TrendingUp,
+  Calendar,
+} from "lucide-react";
 import { AdminNav } from "@/components/admin-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,10 +29,58 @@ import { getSession, isAdmin } from "@/lib/auth";
 type ProgressTab = "students" | "leaderboard";
 type LeaderboardSize = 5 | 10;
 
+const SCORE_BAR_COLORS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-rose-500",
+  "bg-cyan-500",
+];
+
+const BUCKET_COLORS = [
+  "bg-slate-300",
+  "bg-red-400",
+  "bg-amber-400",
+  "bg-emerald-400",
+  "bg-blue-500",
+];
+
 function studentRiskLabel(student: StudentSubjectProgressDto): string | null {
   if (student.quizzesCompleted === 0) return "No activity";
   if (student.averagePercentage < 50) return "At risk";
   return null;
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+}) {
+  return (
+    <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+            {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+          </div>
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accent}`}>
+            <Icon className="h-4 w-4 text-white" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function StudentRow({
@@ -103,6 +162,66 @@ function rankBadgeClass(rank: number): string {
   return "bg-slate-50 text-slate-600 ring-slate-200";
 }
 
+type WeeklyTrendDay = { dayLabel: string; accuracy: number; attempts: number };
+
+function buildWeeklyTrend(students: StudentSubjectProgressDto[]): WeeklyTrendDay[] {
+  const days: WeeklyTrendDay[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - i);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const scores: number[] = [];
+    for (const student of students) {
+      for (const result of student.results) {
+        const submitted = new Date(result.submittedAt);
+        if (submitted >= start && submitted < end) scores.push(result.percentage);
+      }
+    }
+
+    days.push({
+      dayLabel: start.toLocaleDateString(undefined, { weekday: "short" }),
+      accuracy:
+        scores.length > 0
+          ? Math.round(scores.reduce((sum, pct) => sum + pct, 0) / scores.length)
+          : 0,
+      attempts: scores.length,
+    });
+  }
+  return days;
+}
+
+function scoreBuckets(students: StudentSubjectProgressDto[]) {
+  return [
+    {
+      label: "No activity",
+      count: students.filter((s) => s.quizzesCompleted === 0).length,
+    },
+    {
+      label: "Below 50%",
+      count: students.filter((s) => s.quizzesCompleted > 0 && s.averagePercentage < 50).length,
+    },
+    {
+      label: "50–70%",
+      count: students.filter(
+        (s) => s.quizzesCompleted > 0 && s.averagePercentage >= 50 && s.averagePercentage < 70
+      ).length,
+    },
+    {
+      label: "70–85%",
+      count: students.filter(
+        (s) => s.quizzesCompleted > 0 && s.averagePercentage >= 70 && s.averagePercentage < 85
+      ).length,
+    },
+    {
+      label: "85%+",
+      count: students.filter((s) => s.quizzesCompleted > 0 && s.averagePercentage >= 85).length,
+    },
+  ];
+}
+
 export default function AdminProgressPage() {
   const router = useRouter();
   const [subjects, setSubjects] = useState<AssignedSubjectDto[]>([]);
@@ -156,10 +275,34 @@ export default function AdminProgressPage() {
       .finally(() => setLoadingProgress(false));
   }, [selectedId, tab, leaderboardTake]);
 
+  const progressStats = useMemo(() => {
+    if (!progress || progress.students.length === 0) return null;
+    const active = progress.students.filter((s) => s.quizzesCompleted > 0);
+    const atRisk = progress.students.filter((s) => studentRiskLabel(s) === "At risk");
+    const avg =
+      active.length > 0
+        ? Math.round(active.reduce((sum, s) => sum + s.averagePercentage, 0) / active.length)
+        : 0;
+    return {
+      total: progress.students.length,
+      active: active.length,
+      atRisk: atRisk.length,
+      avg,
+      buckets: scoreBuckets(progress.students),
+      topStudents: [...active]
+        .sort((a, b) => b.averagePercentage - a.averagePercentage)
+        .slice(0, 6),
+      weeklyTrend: buildWeeklyTrend(progress.students),
+    };
+  }, [progress]);
+
+  const weeklyMax = Math.max(...(progressStats?.weeklyTrend.map((d) => d.accuracy) ?? [0]), 1);
+  const selectedSubject = subjects.find((s) => s.subjectId === selectedId);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <AdminNav />
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
           <BarChart3 className="h-6 w-6 text-[var(--brand)]" />
           Student progress
@@ -198,6 +341,162 @@ export default function AdminProgressPage() {
               </select>
             </div>
 
+            {tab === "students" && progressStats && !loadingProgress && (
+              <>
+                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard
+                    label="Enrolled"
+                    value={String(progressStats.total)}
+                    sub={selectedSubject?.bundleTitle ?? undefined}
+                    icon={Users}
+                    accent="bg-gradient-to-br from-slate-600 to-slate-700"
+                  />
+                  <StatCard
+                    label="Active"
+                    value={String(progressStats.active)}
+                    sub="Completed at least one quiz"
+                    icon={TrendingUp}
+                    accent="bg-gradient-to-br from-emerald-500 to-emerald-600"
+                  />
+                  <StatCard
+                    label="At risk"
+                    value={String(progressStats.atRisk)}
+                    sub="Below 50% average"
+                    icon={AlertTriangle}
+                    accent="bg-gradient-to-br from-amber-500 to-orange-500"
+                  />
+                  <StatCard
+                    label="Class average"
+                    value={progressStats.active > 0 ? `${progressStats.avg}%` : "—"}
+                    sub="Among active students"
+                    icon={Target}
+                    accent="bg-gradient-to-br from-blue-500 to-blue-600"
+                  />
+                </section>
+
+                <section className="grid gap-6 lg:grid-cols-2">
+                  <Card className="border-slate-200/80 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Calendar className="h-4 w-4 text-[var(--brand)]" />
+                        7-day activity trend
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {progressStats.weeklyTrend.every((d) => d.attempts === 0) ? (
+                        <p className="text-sm text-slate-500">
+                          Daily class accuracy appears here once students complete quizzes this week.
+                        </p>
+                      ) : (
+                        <div className="flex h-36 items-end justify-between gap-2 pt-2">
+                          {progressStats.weeklyTrend.map((day) => (
+                            <div key={day.dayLabel} className="flex flex-1 flex-col items-center gap-1">
+                              <span className="text-[10px] font-medium text-slate-500">
+                                {day.attempts > 0 ? `${day.accuracy}%` : ""}
+                              </span>
+                              <div className="flex w-full flex-1 items-end">
+                                <div
+                                  className="w-full rounded-t-md bg-gradient-to-t from-[var(--brand)] to-[var(--brand)]/60 transition-all"
+                                  style={{
+                                    height: `${Math.max((day.accuracy / weeklyMax) * 100, day.attempts > 0 ? 8 : 2)}%`,
+                                    minHeight: day.attempts > 0 ? "0.5rem" : "0.25rem",
+                                  }}
+                                  title={
+                                    day.attempts > 0
+                                      ? `${day.attempts} quiz attempt${day.attempts === 1 ? "" : "s"}`
+                                      : "No activity"
+                                  }
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-500">{day.dayLabel}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-slate-200/80 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <BarChart3 className="h-4 w-4 text-[var(--brand)]" />
+                        Score distribution
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {progressStats.active === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          No quiz activity yet — distribution appears once students start quizzes.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {progressStats.buckets.map((b, i) => {
+                            const pct =
+                              progressStats.total > 0
+                                ? Math.round((b.count / progressStats.total) * 100)
+                                : 0;
+                            return (
+                              <div key={b.label}>
+                                <div className="mb-1 flex items-center justify-between text-sm">
+                                  <span className="text-slate-700">{b.label}</span>
+                                  <span className="font-medium text-slate-800">
+                                    {b.count} ({pct}%)
+                                  </span>
+                                </div>
+                                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${BUCKET_COLORS[i % BUCKET_COLORS.length]}`}
+                                    style={{
+                                      width: `${Math.max(pct, b.count > 0 ? 4 : 0)}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                </section>
+
+                <section>
+                  <Card className="border-slate-200/80 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Top performers</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {progressStats.topStudents.length === 0 ? (
+                        <p className="text-sm text-slate-500">No scores yet.</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {progressStats.topStudents.map((s, i) => (
+                            <div key={s.userId}>
+                              <div className="mb-1 flex items-center justify-between text-sm">
+                                <span className="truncate font-medium text-slate-800">
+                                  {s.studentName}
+                                </span>
+                                <span className="ml-2 shrink-0 font-semibold text-slate-700">
+                                  {s.averagePercentage}%
+                                </span>
+                              </div>
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full ${SCORE_BAR_COLORS[i % SCORE_BAR_COLORS.length]}`}
+                                  style={{ width: `${Math.max(s.averagePercentage, 4)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </section>
+              </>
+            )}
+
             <div className="flex gap-2">
               {(["students", "leaderboard"] as const).map((t) => (
                 <button
@@ -221,7 +520,7 @@ export default function AdminProgressPage() {
                   <CardTitle className="text-base">
                     {tab === "students"
                       ? progress?.subjectTitle ?? "Progress"
-                      : `${progress?.subjectTitle ?? subjects.find((s) => s.subjectId === selectedId)?.subjectTitle ?? "Subject"} leaderboard`}
+                      : `${progress?.subjectTitle ?? selectedSubject?.subjectTitle ?? "Subject"} leaderboard`}
                   </CardTitle>
                   {tab === "leaderboard" && (
                     <div

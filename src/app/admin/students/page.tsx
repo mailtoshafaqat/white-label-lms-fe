@@ -2,9 +2,10 @@
 
 import { Fragment, Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Mail, Copy, Check, KeyRound, Ban, UserCheck, Users, CalendarClock } from "lucide-react";
+import { Plus, Mail, Copy, Check, KeyRound, Ban, UserCheck, Users, CalendarClock, UserCircle2 } from "lucide-react";
 import { StudentGuardiansPanel } from "@/components/student-guardians-panel";
 import { StudentEnrollmentsPanel } from "@/components/student-enrollments-panel";
+import { StudentProfilePanel } from "@/components/student-profile-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
@@ -15,17 +16,24 @@ import { usePagedList } from "@/hooks/use-paged-list";
 import {
   coursesApi,
   adminApi,
+  API_BASE_URL,
   type BundleDto,
   type CreatedStudentDto,
   type ResetStudentPasswordDto,
   type StudentListItemDto,
+  type SubjectDefinitionDto,
 } from "@/lib/api";
 import { getSession, canManageInstitute } from "@/lib/auth";
+import { profileBundleLabel } from "@/lib/product-profile";
 
 function AdminStudentsContent() {
   const router = useRouter();
+  const tenant = getSession()?.tenant;
+  const bundleLabel = profileBundleLabel(tenant);
   const [bundles, setBundles] = useState<BundleDto[]>([]);
   const [bundlesLoading, setBundlesLoading] = useState(true);
+  const [catalog, setCatalog] = useState<SubjectDefinitionDto[]>([]);
+  const [catalogFilter, setCatalogFilter] = useState("");
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -40,10 +48,20 @@ function AdminStudentsContent() {
   const [actionBusy, setActionBusy] = useState(false);
   const [guardianStudent, setGuardianStudent] = useState<StudentListItemDto | null>(null);
   const [enrollmentStudent, setEnrollmentStudent] = useState<StudentListItemDto | null>(null);
+  const [profileStudent, setProfileStudent] = useState<StudentListItemDto | null>(null);
+
+  function studentPhotoSrc(url: string | null | undefined) {
+    if (!url) return undefined;
+    return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+  }
 
   const fetchStudents = useCallback(
-    (params: Parameters<typeof adminApi.listStudents>[0]) => adminApi.listStudents(params),
-    []
+    (params: Parameters<typeof adminApi.listStudents>[0]) =>
+      adminApi.listStudents({
+        ...params,
+        subjectDefinitionId: catalogFilter || undefined,
+      }),
+    [catalogFilter]
   );
 
   const list = usePagedList({
@@ -61,12 +79,20 @@ function AdminStudentsContent() {
       router.replace("/dashboard");
       return;
     }
-    coursesApi
-      .bundles()
-      .then(setBundles)
-      .catch(() => setBundles([]))
+    Promise.all([
+      coursesApi.bundles().catch(() => [] as BundleDto[]),
+      adminApi.listSubjectDefinitions(true).catch(() => [] as SubjectDefinitionDto[]),
+    ])
+      .then(([b, c]) => {
+        setBundles(b);
+        setCatalog(c);
+      })
       .finally(() => setBundlesLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    void list.reload();
+  }, [catalogFilter]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -138,7 +164,8 @@ function AdminStudentsContent() {
       <main className="mx-auto max-w-4xl px-6 py-8">
         <h1 className="text-2xl font-bold text-slate-900">Students</h1>
         <p className="mt-1 text-slate-600">
-          Create accounts and enroll students into a course. Credentials are emailed automatically.
+          Create student accounts and optionally enroll them in a course. Login details are emailed to
+          the student&apos;s personal email address below (when SMTP is configured).
         </p>
 
         {formError && (
@@ -164,18 +191,25 @@ function AdminStudentsContent() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Personal email (login &amp; credentials)
+                </label>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="student@example.com"
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Account details (email + temporary password) are sent to this address. The student
+                  uses it to sign in.
+                </p>
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Enroll in course (optional)
+                  Enroll in {bundleLabel} (optional)
                 </label>
                 <select
                   value={bundleId}
@@ -183,7 +217,7 @@ function AdminStudentsContent() {
                   disabled={bundlesLoading}
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
                 >
-                  <option value="">No course</option>
+                  <option value="">No {bundleLabel}</option>
                   {bundles.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.title}
@@ -191,7 +225,7 @@ function AdminStudentsContent() {
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Access duration follows the course&apos;s own validity period.
+                  Access duration follows the {bundleLabel}&apos;s own validity period.
                 </p>
               </div>
               <div className="sm:col-span-2">
@@ -225,8 +259,8 @@ function AdminStudentsContent() {
                     <span className={created.emailSent ? "text-emerald-700" : "text-amber-700"}>
                       <Mail className="mr-1 inline h-3.5 w-3.5" />
                       {created.emailSent
-                        ? "Credentials emailed"
-                        : "Email not sent (configure SMTP) — share credentials manually"}
+                        ? `Credentials emailed to ${created.email}`
+                        : `Email not sent to ${created.email} (configure SMTP) — share credentials manually`}
                     </span>
                     <button
                       onClick={() =>
@@ -272,6 +306,23 @@ function AdminStudentsContent() {
         )}
 
         <h2 className="mt-8 text-lg font-semibold text-slate-900">All students</h2>
+        <div className="mt-3 max-w-xs">
+          <label className="mb-1 block text-xs font-medium text-slate-600">
+            Filter by catalog subject
+          </label>
+          <select
+            value={catalogFilter}
+            onChange={(e) => setCatalogFilter(e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">All enrolled students</option>
+            {catalog.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 p-3">
             <AdminListToolbar
@@ -303,7 +354,25 @@ function AdminStudentsContent() {
                 {list.data.map((s) => (
                   <Fragment key={s.userId}>
                   <tr className="border-t border-slate-100">
-                    <td className="px-4 py-2 text-slate-800">{s.fullName}</td>
+                    <td className="px-4 py-2 text-slate-800">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                          {studentPhotoSrc(s.profilePictureUrl) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={studentPhotoSrc(s.profilePictureUrl)}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-400">
+                              <UserCircle2 className="h-5 w-5" />
+                            </div>
+                          )}
+                        </div>
+                        <span>{s.fullName}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-2 text-slate-600">{s.email}</td>
                     <td className="px-4 py-2">
                       <span
@@ -325,6 +394,20 @@ function AdminStudentsContent() {
                           type="button"
                           onClick={() => {
                             setEnrollmentStudent(null);
+                            setGuardianStudent(null);
+                            setProfileStudent((prev) =>
+                              prev?.userId === s.userId ? null : s
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        >
+                          <UserCircle2 className="h-3 w-3" /> Profile
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEnrollmentStudent(null);
+                            setProfileStudent(null);
                             setGuardianStudent((prev) =>
                               prev?.userId === s.userId ? null : s
                             );
@@ -337,6 +420,7 @@ function AdminStudentsContent() {
                           type="button"
                           onClick={() => {
                             setGuardianStudent(null);
+                            setProfileStudent(null);
                             setEnrollmentStudent((prev) =>
                               prev?.userId === s.userId ? null : s
                             );
@@ -374,6 +458,17 @@ function AdminStudentsContent() {
                       </div>
                     </td>
                   </tr>
+                  {profileStudent?.userId === s.userId && (
+                    <tr key={`${s.userId}-profile`}>
+                      <td colSpan={5} className="p-0">
+                        <StudentProfilePanel
+                          student={s}
+                          onClose={() => setProfileStudent(null)}
+                          onUpdated={() => void list.reload()}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {guardianStudent?.userId === s.userId && (
                     <tr key={`${s.userId}-guardians`}>
                       <td colSpan={5} className="p-0">

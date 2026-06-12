@@ -20,6 +20,8 @@ cd frontend && npm run dev
 
 Optional test data: `.\scripts\e2e-seed-testdata.ps1` → passwords in `scripts/e2e-test-credentials.json`
 
+Student features smoke test: `cd backend/scripts` → `.\test-student-learning-features.ps1` (bookmarks, search, weakness quiz)
+
 ---
 
 ## Pick your role
@@ -264,15 +266,20 @@ Do these **once**, in order:
 - Join **live classes**
 - Use **Syllabus Mentor** (AI) and **Ask Teacher** (human doubts)
 - Review **mistake diary**
+- **Bookmark** topics and questions for revision
+- **Search** topics and subjects from the dashboard
+- **Weakness practice quiz** (from mistakes + low-score topics)
 
 ### Your links
 
 | Task | URL |
 |------|-----|
-| Dashboard | http://localhost:3000/dashboard |
+| Dashboard (+ global search) | http://localhost:3000/dashboard |
 | Topic (video + notes) | http://localhost:3000/topic/{topicId} |
 | Daily Practice Test (quiz) | http://localhost:3000/quiz/{topicId} |
 | Flashcards | http://localhost:3000/flashcards/{topicId} |
+| Bookmarks | http://localhost:3000/bookmarks |
+| Weakness quiz | http://localhost:3000/weakness-quiz |
 | Syllabus Mentor | http://localhost:3000/mentor |
 | Ask Teacher | http://localhost:3000/doubts |
 | Mistake diary | http://localhost:3000/mistakes |
@@ -285,6 +292,24 @@ Do these **once**, in order:
 3. Click **Take the Daily Practice Test** → submit answers → see explanations
 4. Click **Review flashcards**
 5. Wrong answers appear later in http://localhost:3000/mistakes
+
+### Step-by-step: bookmarks
+
+1. Open a **topic** → click **Save** in the header (or save a question from **Mistake diary**)
+2. Open http://localhost:3000/bookmarks to see all saved items
+3. Click **Open** to jump back to the topic
+
+### Step-by-step: global search
+
+1. On http://localhost:3000/dashboard, use the **Search topics and subjects** box
+2. Type at least 2 characters (e.g. `bio`, `physics`)
+3. Click a result to open the topic
+
+### Step-by-step: weakness practice quiz
+
+1. Complete at least one topic quiz with some wrong answers (feeds mistake diary)
+2. Go to http://localhost:3000/weakness-quiz **or** Mistake diary → **Start weakness practice quiz**
+3. Answer questions → submit → see score; correct answers clear matching mistakes
 
 ### Step-by-step: ask a teacher
 
@@ -305,6 +330,9 @@ Do these **once**, in order:
 - [ ] Login as seeded student (must be enrolled in a bundle)
 - [ ] Dashboard shows courses and live classes
 - [ ] Complete one quiz
+- [ ] Save one bookmark; open `/bookmarks`
+- [ ] Search for a topic from dashboard
+- [ ] Run weakness quiz after wrong answers
 - [ ] Submit one doubt
 - [ ] Ask Mentor one question
 - [ ] Log out
@@ -363,6 +391,7 @@ Do these **once**, in order:
 | `05-E2E-Test-Report.md` | Formal QA test cases |
 | `scripts/e2e-test-credentials.json` | Latest test logins |
 | `04-Build-Progress-Tracker.md` | Module completion status |
+| `09-Customization-Policy.md` | What institutes can customize (branding, flags) vs paid bespoke work |
 
 ---
 

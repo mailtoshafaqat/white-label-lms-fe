@@ -38,22 +38,32 @@ async function parseErrorBody(res: Response): Promise<{ message: string; traceId
   return { message, traceId };
 }
 
-async function failResponse(res: Response, path: string): Promise<never> {
+async function failResponse(
+  res: Response,
+  path: string,
+  options?: { silent?: boolean }
+): Promise<never> {
   const { message, traceId } = await parseErrorBody(res);
   if (res.status === 401 && !isAuthApiPath(path)) {
     redirectToLogin();
   }
-  if (!isAuthApiPath(path)) {
+  if (!isAuthApiPath(path) && !options?.silent) {
     notifyApiError(message, traceId);
   }
   throw new ApiError(res.status, message, traceId);
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export type ApiRequestOptions = RequestInit & {
+  /** HTTP statuses that should not show an error toast (e.g. optional resources returning 404). */
+  silentStatuses?: number[];
+};
+
+async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const { silentStatuses, ...fetchOptions } = options;
   const session = getSession();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
   if (session?.accessToken) {
     headers["Authorization"] = `Bearer ${session.accessToken}`;
@@ -65,10 +75,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers["X-Tenant-Slug"] = tenantSlug;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${BASE_URL}${path}`, { ...fetchOptions, headers });
 
   if (!res.ok) {
-    await failResponse(res, path);
+    await failResponse(res, path, {
+      silent: silentStatuses?.includes(res.status),
+    });
   }
 
   return (res.status === 204 ? undefined : await res.json()) as T;
@@ -95,14 +107,34 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  me: () => request<{ userId: string; email: string; fullName: string; role: string }>(
-    "/api/v1/auth/me"
-  ),
+  me: () => request<UserProfileDto>("/api/v1/auth/me"),
+};
+
+export type UserProfileDto = {
+  userId: string;
+  email: string;
+  fullName: string;
+  role: string;
+  phone: string | null;
+  profilePictureUrl: string | null;
 };
 
 export type BundleDto = { id: string; title: string; subjectCount: number; price: number };
-export type SubjectDto = { id: string; title: string; order: number; unitCount: number };
-export type UnitDto = { id: string; title: string; order: number; topicCount: number };
+export type SubjectDto = {
+  id: string;
+  title: string;
+  order: number;
+  unitCount: number;
+  subjectDefinitionId?: string | null;
+  linkedToCatalog?: boolean;
+};
+export type UnitDto = {
+  id: string;
+  title: string;
+  order: number;
+  topicCount: number;
+  isShared?: boolean;
+};
 export type BundleDetailDto = { id: string; title: string; subjects: SubjectDto[] };
 export type TopicDto = {
   id: string;
@@ -226,7 +258,9 @@ export const assessmentsApi = {
     const params = new URLSearchParams();
     if (difficulty) params.set("difficulty", difficulty);
     const q = params.toString() ? `?${params}` : "";
-    return request<QuizDto>(`/api/v1/units/${unitId}/quizzes/${quizType}${q}`);
+    return request<QuizDto>(`/api/v1/units/${unitId}/quizzes/${quizType}${q}`, {
+      silentStatuses: [404],
+    });
   },
   startAttempt: (quizId: string) =>
     request<StartAttemptResultDto>(`/api/v1/quizzes/${quizId}/attempts/start`, {
@@ -303,9 +337,44 @@ export type LeaderboardRowDto = {
   isMe: boolean;
 };
 
+export type SubjectAccuracyDto = {
+  subjectId: string;
+  subjectTitle: string;
+  accuracy: number;
+  quizzesCompleted: number;
+};
+
+export type WeeklyScoreDto = {
+  dayLabel: string;
+  accuracy: number;
+  attempts: number;
+};
+
+export type BundleProgressDto = {
+  bundleId: string;
+  bundleTitle: string;
+  topicsCompleted: number;
+  topicsTotal: number;
+  percentComplete: number;
+};
+
+export type DashboardOverviewDto = {
+  overallAccuracy: number;
+  accuracyChangeThisWeek: number;
+  mcqsAttemptedThisMonth: number;
+  instituteRank: number | null;
+  instituteStudentCount: number;
+  practiceStreakDays: number;
+  subjectAccuracy: SubjectAccuracyDto[];
+  weeklyTrend: WeeklyScoreDto[];
+  bundleProgress: BundleProgressDto[];
+  weakestSubject: SubjectAccuracyDto | null;
+};
+
 export const progressApi = {
   myGrades: () => request<GradeDto[]>(`/api/v1/me/grades`),
   leaderboard: (take = 10) => request<LeaderboardRowDto[]>(`/api/v1/leaderboard?take=${take}`),
+  dashboard: () => request<DashboardOverviewDto>(`/api/v1/me/dashboard`),
 };
 
 export type EnrollmentDto = {
@@ -478,8 +547,20 @@ export const adminApi = {
       body: JSON.stringify(b),
     }),
   deleteBundle: (id: string) => del(`/api/v1/admin/bundles/${id}`),
-  createSubject: (bundleId: string, b: { title: string; order: number }) =>
-    post<SubjectDto>(`/api/v1/admin/bundles/${bundleId}/subjects`, b),
+  createSubject: (
+    bundleId: string,
+    b: {
+      title: string;
+      order: number;
+      subjectDefinitionId?: string | null;
+      includeSharedContent?: boolean;
+    }
+  ) => post<SubjectDto>(`/api/v1/admin/bundles/${bundleId}/subjects`, b),
+  linkSharedUnits: (subjectId: string, unitIds?: string[]) =>
+    post<{ linked: boolean }>(
+      `/api/v1/admin/subject-definitions/subjects/${subjectId}/link-shared-units`,
+      { unitIds: unitIds ?? null }
+    ),
   deleteSubject: (id: string) => del(`/api/v1/admin/subjects/${id}`),
   createUnit: (subjectId: string, b: { title: string; order: number }) =>
     post<UnitDto>(`/api/v1/admin/subjects/${subjectId}/units`, b),
@@ -577,7 +658,9 @@ export const adminApi = {
       body: JSON.stringify(b),
     }),
   unitQuiz: (unitId: string, quizType: "unit-test" | "pyq-test") =>
-    request<AdminUnitQuizDto>(`/api/v1/admin/units/${unitId}/quizzes/${quizType}`),
+    request<AdminUnitQuizDto>(`/api/v1/admin/units/${unitId}/quizzes/${quizType}`, {
+      silentStatuses: [404],
+    }),
   updateUnitQuizSettings: (
     unitId: string,
     quizType: "unit-test" | "pyq-test",
@@ -630,7 +713,7 @@ export const adminApi = {
     }),
 
   // Students (admin-managed accounts)
-  listStudents: (params: PagedListParams = {}) =>
+  listStudents: (params: PagedListParams & { subjectDefinitionId?: string } = {}) =>
     request<PagedResult<StudentListItemDto>>(
       `/api/v1/admin/students${buildQueryString(params)}`
     ),
@@ -643,6 +726,22 @@ export const adminApi = {
     }),
   resetStudentPassword: (userId: string) =>
     post<ResetStudentPasswordDto>(`/api/v1/admin/students/${userId}/reset-password`, {}),
+  getStudentProfile: (userId: string) =>
+    request<StudentProfileDto>(`/api/v1/admin/students/${userId}/profile`),
+  updateStudentProfile: (
+    userId: string,
+    b: {
+      fullName: string;
+      phone: string | null;
+      profilePictureUrl: string | null;
+      profileNotes: string | null;
+    }
+  ) =>
+    request<StudentProfileDto>(`/api/v1/admin/students/${userId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+  uploadStudentPhoto: (file: File) => uploadBrandingFile(file, "students"),
   listStudentEnrollments: (userId: string) =>
     request<EnrollmentDto[]>(`/api/v1/admin/students/${userId}/enrollments`),
   extendStudentEnrollment: (userId: string, bundleId: string, expiresAt: string) =>
@@ -738,14 +837,46 @@ export const adminApi = {
     post<ResetTeacherPasswordDto>(`/api/v1/admin/teachers/${userId}/reset-password`, {}),
   listSubjectTeachers: () =>
     request<TeacherSubjectAssignmentDto[]>("/api/v1/admin/subject-teachers"),
-  setTeacherSubjects: (userId: string, subjectIds: string[]) =>
+  setTeacherSubjects: (
+    userId: string,
+    subjectIds: string[],
+    subjectDefinitionIds: string[] = []
+  ) =>
     request<{ saved: boolean }>(`/api/v1/admin/teachers/${userId}/subjects`, {
       method: "PUT",
-      body: JSON.stringify({ subjectIds }),
+      body: JSON.stringify({ subjectIds, subjectDefinitionIds }),
     }),
   mySubjects: () => request<AssignedSubjectDto[]>("/api/v1/admin/my-subjects"),
   listAssignableSubjects: () =>
     request<AssignedSubjectDto[]>("/api/v1/admin/assignable-subjects"),
+  listCatalogSubjectGroups: () =>
+    request<CatalogSubjectGroupDto[]>("/api/v1/admin/catalog-subject-groups"),
+  listSubjectDefinitions: (activeOnly = false) =>
+    request<SubjectDefinitionDto[]>(
+      `/api/v1/admin/subject-definitions?activeOnly=${activeOnly}`
+    ),
+  getSubjectDefinition: (id: string) =>
+    request<SubjectDefinitionDto>(`/api/v1/admin/subject-definitions/${id}`),
+  createSubjectDefinition: (b: {
+    displayName: string;
+    code?: string;
+    category?: string | null;
+    sortOrder: number;
+  }) => post<SubjectDefinitionDto>("/api/v1/admin/subject-definitions", b),
+  updateSubjectDefinition: (
+    id: string,
+    b: { displayName: string; sortOrder: number; isActive: boolean; category?: string | null }
+  ) =>
+    request<SubjectDefinitionDto>(`/api/v1/admin/subject-definitions/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+  archiveSubjectDefinition: (id: string) =>
+    post<SubjectDefinitionDto>(`/api/v1/admin/subject-definitions/${id}/archive`, {}),
+  listLibraryUnits: (definitionId: string) =>
+    request<UnitDto[]>(`/api/v1/admin/subject-definitions/${definitionId}/library-units`),
+  createLibraryUnit: (definitionId: string, b: { title: string; order: number }) =>
+    post<UnitDto>(`/api/v1/admin/subject-definitions/${definitionId}/library-units`, b),
   myProfile: () => request<AdminProfileDto>("/api/v1/admin/me/profile"),
   subjectProgress: (subjectId: string) =>
     request<SubjectProgressDto>(`/api/v1/admin/subjects/${subjectId}/progress`),
@@ -814,6 +945,26 @@ export type AssignedSubjectDto = {
   subjectTitle: string;
   bundleId: string;
   bundleTitle: string;
+  subjectDefinitionId?: string | null;
+  catalogDisplayName?: string | null;
+};
+
+export type CatalogSubjectGroupDto = {
+  definitionId: string;
+  code: string;
+  displayName: string;
+  batchPlacements: AssignedSubjectDto[];
+};
+
+export type SubjectDefinitionDto = {
+  id: string;
+  code: string;
+  displayName: string;
+  category: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  linkedBatchCount: number;
+  libraryUnitCount: number;
 };
 
 export type AdminProfileDto = {
@@ -1032,6 +1183,7 @@ export type MockExamLeaderboardDto = {
 export type TeacherSubjectAssignmentDto = {
   userId: string;
   subjectIds: string[];
+  subjectDefinitionIds: string[];
 };
 
 export type TeacherListItemDto = {
@@ -1086,6 +1238,18 @@ export type StudentListItemDto = {
   email: string;
   isActive: boolean;
   createdAt: string;
+  profilePictureUrl: string | null;
+};
+
+export type StudentProfileDto = {
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  profilePictureUrl: string | null;
+  profileNotes: string | null;
+  isActive: boolean;
+  createdAt: string;
 };
 export type ResetStudentPasswordDto = {
   userId: string;
@@ -1131,6 +1295,7 @@ export type TenantListItemDto = {
   slug: string;
   status: string;
   plan: string;
+  trialEndsAt: string | null;
   createdAt: string;
 };
 export type ProductProfile = "ExamPrep" | "GeneralLms" | "Both";
@@ -1151,6 +1316,7 @@ export type TenantDetailDto = {
   syllabusMentorEnabled: boolean;
   bundlePriceEditEnabled: boolean;
   mcqBulkImportEnabled: boolean;
+  trialEndsAt: string | null;
   createdAt: string;
 };
 export type CreatedInstituteAdminDto = {
@@ -1214,12 +1380,15 @@ export const superAdminApi = {
       syllabusMentorEnabled: boolean;
       bundlePriceEditEnabled: boolean;
       mcqBulkImportEnabled: boolean;
+      trialEndsAt?: string | null;
     }
   ) =>
     request<TenantDetailDto>(`/api/v1/superadmin/tenants/${id}/flags`, {
       method: "PUT",
       body: JSON.stringify(b),
     }),
+  extendTrial: (id: string) =>
+    post<TenantDetailDto>(`/api/v1/superadmin/tenants/${id}/extend-trial`, {}),
   listInstituteAdmins: (tenantId: string) =>
     request<InstituteAdminListItemDto[]>(`/api/v1/superadmin/tenants/${tenantId}/admins`),
   createInstituteAdmin: (tenantId: string, b: { fullName: string; email: string }) =>
@@ -1256,13 +1425,14 @@ export type RequestIncidentDto = {
 };
 
 export const supportApi = {
-  searchIncidents: (traceId?: string, take = 25) => {
-    const q = new URLSearchParams();
-    if (traceId?.trim()) q.set("traceId", traceId.trim());
-    q.set("take", String(take));
-    const qs = q.toString();
-    return request<RequestIncidentDto[]>(`/api/v1/support/incidents${qs ? `?${qs}` : ""}`);
-  },
+  searchIncidents: (params?: { traceId?: string; page?: number; pageSize?: number }) =>
+    request<PagedResult<RequestIncidentDto>>(
+      `/api/v1/support/incidents${buildQueryString({
+        traceId: params?.traceId?.trim() || undefined,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      })}`
+    ),
 };
 
 export type BrandingDto = {
@@ -1338,6 +1508,95 @@ export const mistakesApi = {
   list: () => request<MistakeDto[]>("/api/v1/me/mistakes"),
   resolve: (id: string) =>
     request<{ resolved: boolean }>(`/api/v1/me/mistakes/${id}/resolve`, { method: "POST" }),
+};
+
+export type BookmarkDto = {
+  id: string;
+  targetType: string;
+  targetId: string;
+  title: string;
+  subtitle: string | null;
+  topicId: string | null;
+  createdAt: string;
+};
+
+export type BookmarkStatusDto = {
+  isBookmarked: boolean;
+  bookmarkId: string | null;
+};
+
+export const bookmarksApi = {
+  list: () => request<BookmarkDto[]>("/api/v1/me/bookmarks"),
+  create: (body: {
+    targetType: string;
+    targetId: string;
+    title: string;
+    subtitle?: string | null;
+    topicId?: string | null;
+  }) => post<BookmarkDto>("/api/v1/me/bookmarks", body),
+  remove: (id: string) =>
+    request<void>(`/api/v1/me/bookmarks/${id}`, { method: "DELETE" }),
+  status: (targetType: string, targetId: string) =>
+    request<BookmarkStatusDto>(
+      `/api/v1/me/bookmarks/status?targetType=${encodeURIComponent(targetType)}&targetId=${encodeURIComponent(targetId)}`
+    ),
+};
+
+export type ContentSearchHitDto = {
+  type: string;
+  id: string;
+  title: string;
+  path: string;
+  topicId: string | null;
+  subjectId: string | null;
+  bundleId: string;
+};
+
+export const searchApi = {
+  content: (q: string, take = 20) =>
+    request<ContentSearchHitDto[]>(
+      `/api/v1/search?q=${encodeURIComponent(q)}&take=${take}`
+    ),
+};
+
+export type WeaknessQuizQuestionDto = {
+  id: string;
+  stem: string;
+  options: string[];
+  order: number;
+};
+
+export type WeaknessQuizDto = {
+  sessionId: string;
+  title: string;
+  source: string;
+  questions: WeaknessQuizQuestionDto[];
+};
+
+export type WeaknessQuestionResultDto = {
+  questionId: string;
+  stem: string;
+  options: string[];
+  correctKey: string;
+  selectedKey: string | null;
+  isCorrect: boolean;
+  explanation: string | null;
+};
+
+export type WeaknessQuizResultDto = {
+  score: number;
+  total: number;
+  resolvedMistakes: number;
+  questions: WeaknessQuestionResultDto[];
+};
+
+export const weaknessQuizApi = {
+  load: (count = 10) =>
+    request<WeaknessQuizDto>(`/api/v1/me/weakness-quiz?count=${count}`, {
+      silentStatuses: [404],
+    }),
+  submit: (answers: { questionId: string; selectedKey: string }[]) =>
+    post<WeaknessQuizResultDto>("/api/v1/me/weakness-quiz/submit", { answers }),
 };
 
 export type DoubtThreadStatus = "Open" | "Resolved";

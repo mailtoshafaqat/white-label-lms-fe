@@ -211,7 +211,7 @@ function AdminLiveClassesContent() {
         if (institute && t && maps) {
           setTeachers(t.data);
           const map: Record<string, string[]> = {};
-          for (const row of maps) map[row.userId] = row.subjectIds;
+          for (const row of maps) map[row.userId] = row.subjectIds ?? [];
           setAssignments(map);
           if (subs.length > 0) {
             const firstHost = t.data.find((teacher) =>

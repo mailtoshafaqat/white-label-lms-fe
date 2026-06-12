@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AdminNav } from "@/components/admin-nav";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { canManageInstitute, getSession, isAdmin } from "@/lib/auth";
+import { profileBundleLabel } from "@/lib/product-profile";
 import {
   INSTITUTE_CHECKLIST_STORAGE_KEY,
   fetchInstituteChecklistAuto,
@@ -14,6 +15,7 @@ import {
 
 export default function AdminChecklistPage() {
   const router = useRouter();
+  const bundleLabel = profileBundleLabel(getSession()?.tenant);
 
   useEffect(() => {
     const session = getSession();
@@ -26,7 +28,7 @@ export default function AdminChecklistPage() {
       return;
     }
     if (!canManageInstitute(session)) {
-      router.replace("/admin");
+      router.replace("/admin/home");
     }
   }, [router]);
 
@@ -45,7 +47,7 @@ export default function AdminChecklistPage() {
           tips={[
             {
               title: "Self-enroll off",
-              body: "Most institutes require admin enrollment. Always pick a bundle when creating students.",
+              body: `Most institutes require admin enrollment. Always pick a ${bundleLabel} when creating students.`,
             },
             {
               title: "Teachers are scoped",

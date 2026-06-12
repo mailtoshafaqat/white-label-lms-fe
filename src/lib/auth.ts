@@ -20,6 +20,9 @@ export type TenantFeatures = {
   allowAdminCreateStudent: boolean;
   bundlePriceEditEnabled: boolean;
   mcqBulkImportEnabled: boolean;
+  trialEndsAt?: string | null;
+  trialDaysRemaining?: number | null;
+  trialExpired?: boolean | null;
 };
 
 export type AuthSession = {
@@ -160,7 +163,7 @@ export function getPostLoginPath(session: AuthSession): string {
   if (isSuperAdmin(session)) return "/superadmin";
   if (isInstituteAdmin(session)) {
     if (typeof window !== "undefined" && !isSetupWizardComplete()) return "/admin/setup";
-    return "/admin";
+    return "/admin/home";
   }
   if (isTeacherRole(session)) return "/admin/home";
   if (isAdmin(session)) return "/admin";

@@ -56,6 +56,34 @@ export function profileBundleLabelPlural(tenant?: TenantFeatures | null): string
   return "batches";
 }
 
+/** Title case bundle label for form fields and badges. */
+export function profileBundleLabelTitle(tenant?: TenantFeatures | null): string {
+  const label = profileBundleLabel(tenant);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export function profileBundleInPhrase(tenant?: TenantFeatures | null): string {
+  const p = parseProductProfile(tenant?.productProfile);
+  if (p === "GeneralLms") return "this course";
+  if (p === "Both") return "this batch or course";
+  return "this batch";
+}
+
+/** Cohort wording for quiz-completion teacher alerts (not the course bundle). */
+export function profileCohortLabel(tenant?: TenantFeatures | null): string {
+  const p = parseProductProfile(tenant?.productProfile);
+  if (p === "GeneralLms") return "class";
+  return "batch";
+}
+
+export function profileEmailTeachersOnCohortComplete(tenant?: TenantFeatures | null): string {
+  return `Email teachers on ${profileCohortLabel(tenant)} complete`;
+}
+
+export function profileCohortCompleteThresholdLabel(tenant?: TenantFeatures | null): string {
+  return `${profileCohortLabel(tenant).charAt(0).toUpperCase()}${profileCohortLabel(tenant).slice(1)} complete threshold (%)`;
+}
+
 /** Examples for the content admin “Quick add topic” helper. */
 export function quickAddTopicExamples(tenant?: TenantFeatures | null): {
   bundle: string;

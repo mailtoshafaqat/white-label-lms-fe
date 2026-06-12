@@ -37,6 +37,10 @@ import {
 } from "@/lib/api";
 import { downloadMcqTemplate, parseMcqCsv, previewMcqRows } from "@/lib/mcq-csv";
 import { getSession, isAdmin, canManageInstitute } from "@/lib/auth";
+import {
+  profileCohortCompleteThresholdLabel,
+  profileCohortLabel,
+} from "@/lib/product-profile";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 type QuestionForm = {
@@ -78,6 +82,8 @@ function reorder<T extends { id: string }>(items: T[], id: string, dir: -1 | 1):
 export default function AdminTopicPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: topicId } = use(params);
   const router = useRouter();
+  const tenant = getSession()?.tenant;
+  const cohortLabel = profileCohortLabel(tenant);
 
   const [lectures, setLectures] = useState<LectureDto[]>([]);
   const [notes, setNotes] = useState<NoteDto[]>([]);
@@ -433,6 +439,8 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
           className="ml-auto"
           disabled={indexing}
           onClick={indexForMentor}
+          title="Refreshes the Syllabus Mentor AI index from this topic's notes so students get answers from your syllabus. Saving a note already does this automatically — click here only if you need a manual refresh."
+          aria-label="Re-index notes for Syllabus Mentor AI"
         >
           <Brain className="h-4 w-4" />
           {indexing ? "Indexing…" : "Re-index notes (auto on save)"}
@@ -969,14 +977,14 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       checked={notifyBatchComplete}
                       onChange={(e) => setNotifyBatchComplete(e.target.checked)}
                     />
-                    Email teachers when batch completes
+                    Email teachers when {cohortLabel} completes
                   </label>
                 </div>
               </div>
               {notifyBatchComplete && (
                 <div className="mt-2">
                   <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Batch complete threshold (%)
+                    {profileCohortCompleteThresholdLabel(tenant)}
                   </label>
                   <input
                     type="number"

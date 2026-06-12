@@ -8,6 +8,10 @@ Send to the client **before** development.
 | **2** | [02-White-Label-AI-LMS-Proposal.md](./02-White-Label-AI-LMS-Proposal.md) | Existing + new AI LMS + white-label proposal |
 | **3** | [03-Technical-Architecture-LMS.md](./03-Technical-Architecture-LMS.md) | Internal: tech stack, architecture, phase/feature build spec (not client-facing) |
 | **4** | [04-Build-Progress-Tracker.md](./04-Build-Progress-Tracker.md) | Internal: module-wise build status (done / in progress / remaining) |
+| **7** | [07-Role-Based-Operations-Guide.md](./07-Role-Based-Operations-Guide.md) | Role-wise login, URLs, and step-by-step operations |
+| **8** | [08-Product-Feature-Catalog.md](./08-Product-Feature-Catalog.md) | Complete feature list + role matrix (current product) |
+| **9** | [09-Customization-Policy.md](./09-Customization-Policy.md) | What tenants can customize vs paid product changes |
+| **10** | [10-Client-Feature-List-By-Role.md](./10-Client-Feature-List-By-Role.md) | **Client / owner** — features by role + UAT summary |
 
 PDFs: same names with `.pdf` extension. From this folder:
 

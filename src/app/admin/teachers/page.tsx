@@ -23,16 +23,20 @@ import { usePagedList } from "@/hooks/use-paged-list";
 import {
   adminApi,
   type AssignedSubjectDto,
+  type CatalogSubjectGroupDto,
   type CreatedTeacherDto,
   type ResetTeacherPasswordDto,
   type TeacherListItemDto,
 } from "@/lib/api";
 import { getSession, canManageInstitute } from "@/lib/auth";
+import { profileBundleLabel, profileBundleLabelPlural } from "@/lib/product-profile";
 
 function AdminTeachersContent() {
   const router = useRouter();
   const [subjects, setSubjects] = useState<AssignedSubjectDto[]>([]);
+  const [catalogGroups, setCatalogGroups] = useState<CatalogSubjectGroupDto[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  const [definitionAssignments, setDefinitionAssignments] = useState<Record<string, string[]>>({});
   const [metaLoading, setMetaLoading] = useState(true);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -70,14 +74,21 @@ function AdminTeachersContent() {
     }
 
     async function loadMeta() {
-      const [allSubjects, maps] = await Promise.all([
+      const [allSubjects, groups, maps] = await Promise.all([
         adminApi.listAssignableSubjects(),
+        adminApi.listCatalogSubjectGroups(),
         adminApi.listSubjectTeachers(),
       ]);
       setSubjects(allSubjects);
+      setCatalogGroups(groups);
       const map: Record<string, string[]> = {};
-      for (const row of maps) map[row.userId] = row.subjectIds;
+      const defMap: Record<string, string[]> = {};
+      for (const row of maps) {
+        map[row.userId] = row.subjectIds;
+        defMap[row.userId] = row.subjectDefinitionIds ?? [];
+      }
       setAssignments(map);
+      setDefinitionAssignments(defMap);
     }
 
     loadMeta()
@@ -88,6 +99,13 @@ function AdminTeachersContent() {
   useEffect(() => {
     if (list.data.length === 0) return;
     setAssignments((prev) => {
+      const next = { ...prev };
+      for (const t of list.data) {
+        if (!next[t.userId]) next[t.userId] = [];
+      }
+      return next;
+    });
+    setDefinitionAssignments((prev) => {
       const next = { ...prev };
       for (const t of list.data) {
         if (!next[t.userId]) next[t.userId] = [];
@@ -105,6 +123,7 @@ function AdminTeachersContent() {
       const result = await adminApi.createTeacher({ fullName, email });
       setCreated(result);
       setAssignments((prev) => ({ ...prev, [result.userId]: [] }));
+      setDefinitionAssignments((prev) => ({ ...prev, [result.userId]: [] }));
       setFullName("");
       setEmail("");
       await list.reload();
@@ -125,11 +144,25 @@ function AdminTeachersContent() {
     });
   }
 
+  function toggleDefinition(teacherId: string, definitionId: string) {
+    setDefinitionAssignments((prev) => {
+      const current = prev[teacherId] ?? [];
+      const next = current.includes(definitionId)
+        ? current.filter((id) => id !== definitionId)
+        : [...current, definitionId];
+      return { ...prev, [teacherId]: next };
+    });
+  }
+
   async function saveAssignments(teacherId: string) {
     setSavingId(teacherId);
     setFormError(null);
     try {
-      await adminApi.setTeacherSubjects(teacherId, assignments[teacherId] ?? []);
+      await adminApi.setTeacherSubjects(
+        teacherId,
+        assignments[teacherId] ?? [],
+        definitionAssignments[teacherId] ?? []
+      );
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Could not save assignments");
     } finally {
@@ -178,13 +211,15 @@ function AdminTeachersContent() {
     [subjects]
   );
 
-  const byBundle = useMemo(
+  const catalogGroupsForUi = useMemo(
+    () => catalogGroups.filter((g) => g.definitionId !== "00000000-0000-0000-0000-000000000000"),
+    [catalogGroups]
+  );
+
+  const legacyGroup = useMemo(
     () =>
-      subjects.reduce<Record<string, AssignedSubjectDto[]>>((acc, s) => {
-        (acc[s.bundleTitle] ??= []).push(s);
-        return acc;
-      }, {}),
-    [subjects]
+      catalogGroups.find((g) => g.definitionId === "00000000-0000-0000-0000-000000000000") ?? null,
+    [catalogGroups]
   );
 
   const emptyMessage =
@@ -302,11 +337,14 @@ function AdminTeachersContent() {
               <TeacherCard
                 key={t.userId}
                 teacher={t}
-                byBundle={byBundle}
+                catalogGroups={catalogGroupsForUi}
+                legacyGroup={legacyGroup}
                 subjectById={subjectById}
                 assignedIds={assignments[t.userId] ?? []}
+                assignedDefinitionIds={definitionAssignments[t.userId] ?? []}
                 saving={savingId === t.userId}
                 onToggleSubject={(subjectId) => toggleSubject(t.userId, subjectId)}
+                onToggleDefinition={(definitionId) => toggleDefinition(t.userId, definitionId)}
                 onSave={() => saveAssignments(t.userId)}
                 onResetPassword={() => setResetConfirm(t)}
                 onToggleStatus={() => setStatusConfirm(t)}
@@ -373,11 +411,14 @@ function teacherInitials(fullName: string) {
 
 type TeacherCardProps = {
   teacher: TeacherListItemDto;
-  byBundle: Record<string, AssignedSubjectDto[]>;
+  catalogGroups: CatalogSubjectGroupDto[];
+  legacyGroup: CatalogSubjectGroupDto | null;
   subjectById: Map<string, AssignedSubjectDto>;
   assignedIds: string[];
+  assignedDefinitionIds: string[];
   saving: boolean;
   onToggleSubject: (subjectId: string) => void;
+  onToggleDefinition: (definitionId: string) => void;
   onSave: () => void;
   onResetPassword: () => void;
   onToggleStatus: () => void;
@@ -385,19 +426,29 @@ type TeacherCardProps = {
 
 function TeacherCard({
   teacher,
-  byBundle,
+  catalogGroups,
+  legacyGroup,
   subjectById,
   assignedIds,
+  assignedDefinitionIds,
   saving,
   onToggleSubject,
+  onToggleDefinition,
   onSave,
   onResetPassword,
   onToggleStatus,
 }: TeacherCardProps) {
+  const tenant = getSession()?.tenant;
+  const bundleLabel = profileBundleLabel(tenant);
+  const bundlesLabel = profileBundleLabelPlural(tenant);
   const [editing, setEditing] = useState(false);
+  const [showBatchBreakdown, setShowBatchBreakdown] = useState(false);
   const assignedSubjects = assignedIds
     .map((id) => subjectById.get(id))
     .filter((s): s is AssignedSubjectDto => Boolean(s));
+  const assignedCatalogNames = catalogGroups
+    .filter((g) => assignedDefinitionIds.includes(g.definitionId))
+    .map((g) => g.displayName);
 
   return (
     <Card className="overflow-hidden">
@@ -461,17 +512,28 @@ function TeacherCard({
       <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {assignedSubjects.length > 0 ? (
+            {assignedCatalogNames.length > 0 || assignedSubjects.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {assignedSubjects.map((s) => (
+                {assignedCatalogNames.map((name) => (
                   <span
-                    key={s.subjectId}
-                    className="inline-flex items-center rounded-full border border-[var(--brand)]/20 bg-white px-2.5 py-0.5 text-xs font-medium text-[var(--brand)]"
-                    title={s.bundleTitle}
+                    key={name}
+                    className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-800"
+                    title={`Catalog-level assignment (all linked ${bundlesLabel})`}
                   >
-                    {s.subjectTitle}
+                    {name}
                   </span>
                 ))}
+                {assignedSubjects
+                  .filter((s) => !s.subjectDefinitionId || !assignedDefinitionIds.includes(s.subjectDefinitionId))
+                  .map((s) => (
+                    <span
+                      key={s.subjectId}
+                      className="inline-flex items-center rounded-full border border-[var(--brand)]/20 bg-white px-2.5 py-0.5 text-xs font-medium text-[var(--brand)]"
+                      title={s.bundleTitle}
+                    >
+                      {s.subjectTitle}
+                    </span>
+                  ))}
               </div>
             ) : (
               <p className="text-sm text-slate-500">No subjects assigned yet</p>
@@ -499,55 +561,112 @@ function TeacherCard({
 
       {editing && (
         <CardContent className="border-t border-slate-100 pt-4">
-          <div className="space-y-2">
-            {Object.entries(byBundle).map(([bundleTitle, subs]) => {
-              const selectedInBundle = subs.filter((s) => assignedIds.includes(s.subjectId)).length;
+          <p className="mb-3 text-xs text-slate-600">
+            Assign catalog subjects for institute-wide access, or pick individual {bundleLabel}{" "}
+            placements below.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {catalogGroups.map((g) => {
+              const checked = assignedDefinitionIds.includes(g.definitionId);
               return (
-                <details
-                  key={bundleTitle}
-                  className="group rounded-lg border border-slate-200 bg-white"
-                  open={selectedInBundle > 0}
+                <label
+                  key={g.definitionId}
+                  className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors ${
+                    checked
+                      ? "border-indigo-400 bg-indigo-50 text-indigo-900"
+                      : "border-slate-200 text-slate-600 hover:border-slate-300"
+                  }`}
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
-                    <span className="min-w-0 truncate">{bundleTitle}</span>
-                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
-                      {selectedInBundle > 0 ? (
-                        <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-[var(--brand)]">
-                          {selectedInBundle} selected
-                        </span>
-                      ) : (
-                        <span>{subs.length} subjects</span>
-                      )}
-                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                    </span>
-                  </summary>
-                  <div className="flex flex-wrap gap-2 border-t border-slate-100 px-3 py-3">
-                    {subs.map((s) => {
-                      const checked = assignedIds.includes(s.subjectId);
-                      return (
-                        <label
-                          key={s.subjectId}
-                          className={`cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors ${
-                            checked
-                              ? "border-[var(--brand)] bg-blue-50 text-[var(--brand)]"
-                              : "border-slate-200 text-slate-600 hover:border-slate-300"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={checked}
-                            onChange={() => onToggleSubject(s.subjectId)}
-                          />
-                          {s.subjectTitle}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </details>
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={checked}
+                    onChange={() => onToggleDefinition(g.definitionId)}
+                  />
+                  {g.displayName}
+                  <span className="ml-1 text-xs opacity-70">({g.batchPlacements.length})</span>
+                </label>
               );
             })}
           </div>
+          <button
+            type="button"
+            onClick={() => setShowBatchBreakdown((v) => !v)}
+            className="mt-4 text-xs font-medium text-[var(--brand)] hover:underline"
+          >
+            {showBatchBreakdown ? "Hide" : "Show"} per-{bundleLabel} breakdown
+          </button>
+          {showBatchBreakdown && (
+            <div className="mt-3 space-y-2">
+              {catalogGroups.map((g) =>
+                g.batchPlacements.length === 0 ? null : (
+                  <details
+                    key={g.definitionId}
+                    className="group rounded-lg border border-slate-200 bg-white"
+                  >
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
+                      <span>{g.displayName}</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="flex flex-wrap gap-2 border-t border-slate-100 px-3 py-3">
+                      {g.batchPlacements.map((s) => {
+                        const checked =
+                          assignedIds.includes(s.subjectId) ||
+                          assignedDefinitionIds.includes(g.definitionId);
+                        return (
+                          <label
+                            key={s.subjectId}
+                            className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${
+                              checked
+                                ? "border-[var(--brand)] bg-blue-50 text-[var(--brand)]"
+                                : "border-slate-200 text-slate-600"
+                            } ${assignedDefinitionIds.includes(g.definitionId) ? "opacity-60" : ""}`}
+                            title={s.bundleTitle}
+                          >
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={checked}
+                              disabled={assignedDefinitionIds.includes(g.definitionId)}
+                              onChange={() => onToggleSubject(s.subjectId)}
+                            />
+                            {s.bundleTitle}: {s.subjectTitle}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )
+              )}
+              {legacyGroup && legacyGroup.batchPlacements.length > 0 && (
+                <details className="group rounded-lg border border-amber-200 bg-amber-50/40">
+                  <summary className="px-3 py-2.5 text-sm font-medium text-amber-900">
+                    Legacy subjects (no catalog link)
+                  </summary>
+                  <div className="flex flex-wrap gap-2 border-t border-amber-100 px-3 py-3">
+                    {legacyGroup.batchPlacements.map((s) => (
+                      <label
+                        key={s.subjectId}
+                        className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${
+                          assignedIds.includes(s.subjectId)
+                            ? "border-[var(--brand)] bg-blue-50 text-[var(--brand)]"
+                            : "border-slate-200 text-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={assignedIds.includes(s.subjectId)}
+                          onChange={() => onToggleSubject(s.subjectId)}
+                        />
+                        {s.bundleTitle}: {s.subjectTitle}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
           <div className="mt-4 flex justify-end">
             <Button type="button" size="sm" disabled={saving} onClick={onSave}>
               {saving ? "Saving…" : "Save assignments"}

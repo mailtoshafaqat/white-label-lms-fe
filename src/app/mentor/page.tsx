@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BrandHeader } from "@/components/brand-header";
 import { MentorPanel } from "@/components/mentor-panel";
-import { loadAndApplyBranding, type BrandingDto } from "@/lib/branding";
+import { loadAndApplyBranding, mentorLabel, type BrandingDto } from "@/lib/branding";
 import { getSession } from "@/lib/auth";
 import { coursesApi, type SubjectDto } from "@/lib/api";
 
@@ -48,7 +48,7 @@ export default function MentorPage() {
         <Link href="/dashboard" className="text-slate-500 hover:text-slate-800">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <span className="font-semibold text-slate-900">Syllabus Mentor</span>
+        <span className="font-semibold text-slate-900">{mentorLabel(branding)}</span>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
         {subjects.length > 0 && (

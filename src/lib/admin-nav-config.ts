@@ -38,9 +38,12 @@ export function getAdminNavItems(session: AuthSession): AdminNavItem[] {
 
   if (institute) {
     const coreBefore: AdminNavItem[] = [
+      { href: "/admin/home", label: "Home", group: "core" },
       { href: "/admin/checklist", label: "Checklist", group: "core" },
       { href: "/admin/setup", label: "Setup wizard", group: "core" },
+      { href: "/admin/subjects", label: "Subject catalog", group: "courses" },
       { href: "/admin", label: "Content", group: "courses" },
+      { href: "/admin/progress", label: "Progress", group: "courses" },
     ];
     const coreAfter: AdminNavItem[] = [
       { href: "/admin/teachers", label: "Teachers", group: "core" },
