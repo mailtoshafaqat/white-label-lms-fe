@@ -38,6 +38,8 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 ### Content (video + notes)
 - Video lectures per topic (members-only when configured)
+- **Video watch progress** — monotonic 0–100% per lecture; topic complete when all lectures ≥90% **or** quiz submitted
+- Student video library (`/videos`) with progress bars; dashboard bundle completion bars
 - Rich HTML notes + file upload
 - Auto re-index notes for Syllabus Mentor on save
 - Admin content tree with topic search (admin only)
@@ -50,6 +52,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - Question flagging during attempt
 - Admin quiz & flashcard builders (reorder, edit)
 - MCQ bulk import (tenant flag)
+- **Question bank search** — search MCQ stems institute-wide (`GET /api/v1/admin/questions/search`, `/admin/question-bank`)
 
 ### Flashcards
 - Per-topic flashcard decks
@@ -62,6 +65,8 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - **Bookmarks** — save topics & questions for revision (`/bookmarks`)
 - **Weakness practice quiz** — adaptive quiz from mistakes + weak topics (`/weakness-quiz`)
 - Admin subject progress, per-student detail (grades, doubts, mistakes)
+- **Cohort analytics** — bundle/subject KPIs, student table, CSV export (`/admin/analytics`)
+- **Completion certificates (Phase A)** — auto-issue on full bundle completion; per-tenant template; PDF + QR public verify
 
 ### Syllabus Mentor (AI)
 - RAG over institute notes (no open web)
@@ -101,6 +106,8 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - Subject catalog (`/admin/subjects`) — seed, archive, shared library
 - Setup wizard & checklist
 - Teachers, students, live classes, doubts, mock exams (profile-dependent)
+- **Storage usage widget** on admin home (plan quota, warnings, block at 100%)
+- **Certificates** — issued list (`/admin/certificates`), template editor (`/admin/certificates/template`)
 
 ### Branding & landing
 - Logo, favicon, primary color, display name
@@ -113,6 +120,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - Per-tenant feature flags & product profile
 - Institute admin provisioning
 - Tenant branding override
+- **Storage quota** — per-tenant usage vs plan limit; override bytes or enable bypass
 - Request incident log (Support)
 
 ### Support
@@ -135,6 +143,12 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | Live classes (manage) | — | — | ✅ | ✅* | — |
 | Doubts (reply) | — | — | ✅ | ✅* | — |
 | Mock exams (manage) | — | — | ✅ | ✅* | — |
+| Cohort analytics + CSV | — | — | ✅ | ✅* | — |
+| Question bank search | — | — | ✅ | ✅* | — |
+| Certificates (manage / template) | — | — | ✅ | ✅* | — |
+| Storage quota (view / override) | ✅ | — | ✅ | — | — |
+| Video watch progress | — | — | — | — | ✅ |
+| Earn / download certificates | — | — | — | — | ✅ |
 | Dashboard & topics | — | — | — | — | ✅ |
 | Quizzes & flashcards | — | — | — | — | ✅ |
 | Grades & leaderboard | — | — | — | — | ✅ |
@@ -166,7 +180,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 ---
 
-## API quick reference (new student features)
+## API quick reference (student + admin features)
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -177,6 +191,23 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | GET | `/api/v1/me/bookmarks/status` | Check if target is bookmarked |
 | GET | `/api/v1/me/weakness-quiz` | Build weakness quiz |
 | POST | `/api/v1/me/weakness-quiz/submit` | Submit weakness quiz |
+| PUT | `/api/v1/me/lectures/{id}/progress` | Save video watch progress (0–100%) |
+| GET | `/api/v1/me/lectures/{id}/progress` | Get progress for one lecture |
+| GET | `/api/v1/me/lectures/progress?lectureIds=` | Bulk lecture progress |
+| GET | `/api/v1/me/certificates` | Student's earned certificates |
+| GET | `/api/v1/me/certificates/{id}/pdf` | Download certificate PDF |
+| GET | `/api/v1/public/certificates/verify/{number}?tenant=` | Public QR verify (no auth) |
+| GET | `/api/v1/admin/certificate-template` | Get certificate template |
+| PUT | `/api/v1/admin/certificate-template` | Save certificate template |
+| GET | `/api/v1/admin/certificates` | List issued certificates |
+| GET | `/api/v1/admin/certificates/{id}/pdf` | Admin download certificate PDF |
+| GET | `/api/v1/admin/analytics/cohort` | Cohort overview KPIs |
+| GET | `/api/v1/admin/analytics/cohort/students` | Per-student cohort rows |
+| GET | `/api/v1/admin/analytics/cohort/export` | CSV export |
+| GET | `/api/v1/admin/questions/search?q=` | MCQ stem search (min 2 chars) |
+| GET | `/api/v1/admin/storage` | Institute storage usage vs quota |
+| GET | `/api/v1/superadmin/tenants/storage` | All tenants storage summary |
+| PUT | `/api/v1/superadmin/tenants/{id}/storage` | Override quota or bypass |
 
 ---
 
@@ -186,6 +217,9 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 cd backend/scripts
 .\test-student-learning-features.ps1
 .\test-product-profiles.ps1
+.\test-roadmap-features.ps1
+.\test-certificate-student1.ps1
+.\test-storage-quota.ps1
 ```
 
 Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against the **demo** tenant (`student1@demo.com`).
@@ -200,15 +234,12 @@ Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against
 
 | Item | Profiles | Priority |
 |------|----------|----------|
-| Video watch progress % | Both | High |
-| Certificates on completion | Both | High |
-| MCQ search in question bank | ExamPrep | High |
-| Full analytics (cohort, export) | Both | High |
 | Course reviews / ratings | GeneralLms (+ optional Academy) | Medium |
 | Discussions / forums | GeneralLms; overlaps with doubts in ExamPrep | Medium |
 | Proctoring / anti-cheat mocks | ExamPrep | Medium |
-| Usage metering / billing tenants | Platform SaaS | Medium |
+| Usage metering / billing (beyond storage quota) | Platform SaaS | Medium |
 | Tenant API keys / webhooks | Platform / enterprise | Medium–Low |
+| Certificates Phase B (custom fields, email delivery) | Both | Medium |
 
 ### Other
 

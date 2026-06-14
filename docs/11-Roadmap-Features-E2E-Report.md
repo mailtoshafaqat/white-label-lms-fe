@@ -17,7 +17,7 @@
 
 **Overall: 11/11 automated API tests passed.**
 
-Deferred (out of scope): reviews, forums, proctoring, platform metering.
+Deferred (out of scope for Jun 2026 batch): reviews, forums, proctoring, full platform billing. Storage quota metering **shipped** separately.
 
 ---
 
@@ -42,24 +42,38 @@ Deferred (out of scope): reviews, forums, proctoring, platform metering.
 
 ---
 
-## 2. Certificates on completion
+## 2. Certificates on completion (Phase A)
 
 ### Criteria
 A **bundle certificate** is auto-issued once when:
 1. Student is actively enrolled in the bundle, and
-2. **Every topic** in the bundle is complete (quiz **or** video rule above).
+2. **Every topic** in the bundle is complete (quiz **or** video rule above), and
+3. Tenant **certificate template is enabled**.
 
 One certificate per user per bundle (`CERT-{year}-{6-char}`).
 
 ### Backend
-- Entity: `progress.CompletionCertificates`
-- `GET /api/v1/me/certificates`
-- `GET /api/v1/admin/certificates?bundleId=&page=&pageSize=`
+- Entities: `progress.CompletionCertificates`, `progress.CertificateTemplates`
+- **Template config:** title, subtitle, colours, logo/background/signature URLs, `Enabled` flag
+- **PDF generation:** QuestPDF + QRCoder (QR links to public verify URL)
+- Endpoints:
+  - `GET/PUT /api/v1/admin/certificate-template`
+  - `GET /api/v1/admin/certificates?bundleId=&page=&pageSize=`
+  - `GET /api/v1/admin/certificates/{id}/pdf`
+  - `GET /api/v1/me/certificates`
+  - `GET /api/v1/me/certificates/{id}/pdf`
+  - `GET /api/v1/public/certificates/verify/{number}?tenant=slug` (no auth)
 - Issued after video progress save or quiz submit when bundle becomes complete.
+- Migrations: `AddCertificateTemplates`, `SyncCertificateTemplateSnapshot`
 
 ### Frontend
-- Student: `/certificates` + dashboard quick action
-- Admin: `/admin/certificates`
+- Student: `/certificates` + dashboard quick action; PDF download
+- Admin: `/admin/certificates` (issued list + PDF download)
+- Admin template: `/admin/certificates/template` (enable, branding, preview)
+- Public verify: `/verify/[number]?tenant=slug`
+
+### Test
+- `backend/scripts/test-certificate-student1.ps1` — **9/9 pass** (issue, PDF, public verify)
 
 ---
 
@@ -141,6 +155,8 @@ powershell -File backend/scripts/test-roadmap-features.ps1
 
 ## Known limits
 
-- Certificate is metadata only (no PDF render yet).
+- Certificate **Phase B** not built (custom fields, batch re-issue, email delivery). Phase A includes PDF + QR verify.
+- Certificate template must be **enabled** or auto-issue is skipped.
 - Question search matches stem substring only (no full-text index).
 - Cohort analytics loads all enrolled students for a bundle in one request (fine for typical academy sizes).
+- Storage usage may be **zero for files uploaded before metering** — run backfill or re-upload to populate `TenantStorageObject` rows.

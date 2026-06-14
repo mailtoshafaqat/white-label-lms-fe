@@ -108,6 +108,8 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Setup wizard** | Guided first-time setup |
 | **Launch checklist** | Step-by-step institute onboarding (browser-saved progress) |
 | **Progress** | Institute-wide student progress by subject — KPIs, 7-day trend, score distribution, leaderboard, per-student drill-down |
+| **Cohort analytics** | Bundle/subject cohort KPIs, per-student table, CSV export (`/admin/analytics`) |
+| **Storage usage** | Plan quota (MVP 20 GB, Pro 100 GB), usage bar, 80% warning, upload blocked at 100% |
 
 ### Content & curriculum
 
@@ -119,6 +121,15 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Unit tests / PYQ** | Unit-level timed tests (exam-prep profile) |
 | **MCQ bulk import** | CSV import when enabled for tenant |
 | **Mock exams** | Full-length exams with sections (exam-prep / Both) |
+| **Question bank search** | Search MCQ stems across the institute (`/admin/question-bank`) |
+
+### Certificates & completion
+
+| Feature | Description |
+|---------|-------------|
+| **Certificate template** | Per-tenant title, colours, logo/background/signature; enable/disable issuance |
+| **Issued certificates** | List certificates earned by students; download PDF per certificate |
+| **Auto-issue** | Certificate issued when student completes every topic in a bundle (quiz **or** ≥90% video watch per topic) |
 
 ### People & enrollment
 
@@ -155,6 +166,10 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | Home | `/admin/home` |
 | Content | `/admin` |
 | Progress | `/admin/progress` |
+| Cohort analytics | `/admin/analytics` |
+| Question bank | `/admin/question-bank` |
+| Certificates | `/admin/certificates` |
+| Certificate template | `/admin/certificates/template` |
 | Subject catalog | `/admin/subjects` |
 | Teachers | `/admin/teachers` |
 | Students | `/admin/students` |
@@ -177,6 +192,9 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Content CMS** | Edit topics/units for assigned subjects only |
 | **Student progress** | Subject progress, 7-day class trend, at-risk students, leaderboard |
 | **Per-student detail** | Quiz history, doubts summary, mistake summary |
+| **Cohort analytics** | Same as institute admin, scoped to assigned subjects |
+| **Question bank** | Search MCQs in assigned subjects |
+| **Certificates** | View issued certificates for students in assigned bundles |
 | **Live classes** | Create/host classes for assigned subjects |
 | **Doubts** | Reply to student threads |
 | **Mock exams** | Manage mocks for assigned subjects (when profile allows) |
@@ -204,6 +222,8 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 | **Global search** | Find topics and subjects by keyword |
 | **Course catalog** | Browse published courses/batches; self-enroll when institute allows |
 | **Topic learning** | Watch video, read notes, take topic quiz, flashcards |
+| **Video library** | All lectures with watch progress (`/videos`) |
+| **Bundle progress** | Dashboard bars show video + quiz completion per enrolled bundle |
 
 ### Practice & assessment
 
@@ -227,6 +247,8 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 | **Live classes** | Join scheduled classes |
 | **Syllabus Mentor** | AI Q&A over institute notes only (no open web) — English/Urdu |
 | **Student profile** | Update phone, address, DOB, profile photo |
+| **Certificates** | View earned completion certificates; download PDF (`/certificates`) |
+| **Public verify** | Anyone can verify a certificate via QR link (`/verify/{number}?tenant=slug`) |
 
 ### Account
 
@@ -241,8 +263,10 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 | Area | URL |
 |------|-----|
 | Dashboard | `/dashboard` |
+| Video library | `/videos` |
 | Topic | `/topic/{id}` |
 | Quiz | `/quiz/{topicId}` |
+| Certificates | `/certificates` |
 | Bookmarks | `/bookmarks` |
 | Mistakes | `/mistakes` |
 | Weakness quiz | `/weakness-quiz` |
@@ -276,11 +300,18 @@ SuperAdmin can override individual flags per institute. See [09-Customization-Po
 | Capability | SuperAdmin | Support | Institute Admin | Teacher | Student |
 |------------|:----------:|:-------:|:---------------:|:-------:|:-------:|
 | Manage tenants & flags | ✅ | — | — | — | — |
+| Storage quota override / bypass | ✅ | — | — | — | — |
 | Search error incidents | — | ✅ | — | — | — |
 | Branding & landing page | — | — | ✅ | — | — |
 | Full content CMS | — | — | ✅ | ✅* | — |
 | All students & teachers | — | — | ✅ | — | — |
 | Student progress analytics | — | — | ✅ | ✅* | — |
+| Cohort analytics + CSV | — | — | ✅ | ✅* | — |
+| Question bank search | — | — | ✅ | ✅* | — |
+| Certificates (manage / template) | — | — | ✅ | ✅* | — |
+| Storage quota (view) | — | — | ✅ | — | — |
+| Video watch progress | — | — | — | — | ✅ |
+| Earn / download certificates | — | — | — | — | ✅ |
 | Live classes (manage) | — | — | ✅ | ✅* | — |
 | Doubts (reply) | — | — | ✅ | ✅* | — |
 | Learn & take quizzes | — | — | — | — | ✅ |
@@ -315,15 +346,12 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 
 | Feature | Best for | Recommended priority | Notes |
 |---------|----------|----------------------|-------|
-| **Video watch progress %** | Both | **Shipped (Jun 2026)** | Student `/videos` + topic player; admin cohort analytics includes video counts. |
-| **Certificates on completion** | Both | **Shipped (Phase A)** | Per-tenant template (title, colors, logo/background/signature), PDF + QR public verify at `/verify/{number}?tenant=slug`. |
-| **MCQ search in question bank** | ExamPrep / Academy | **Shipped (Jun 2026)** | `/admin/question-bank` — search question stem text. |
-| **Full analytics (cohort, export)** | Both | **Shipped (Jun 2026)** | `/admin/analytics` — cohort overview + CSV export. |
 | **Course reviews / ratings** | General LMS · optional for Academy | **Medium** | Valuable for self-enroll course catalog and trust; less critical when enrollment is institute-managed. |
 | **Discussions / forums** | General LMS · partial Academy overlap | **Medium** | Academy already has **doubts (Ask Teacher)** per topic. Forums add peer discussion and unit-wide threads — decide if doubts are enough first. |
 | **Proctoring / anti-cheat (mocks)** | ExamPrep / Academy | **Medium** | Important for high-stakes mock exams; complex to build in-house. Consider integrate-first (Proctorio, etc.) before custom. |
-| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Partial (Jun 2026)** | **Storage quota** shipped (per-tenant limits, usage tracking, SuperAdmin override/bypass). Broader billing/metering (seats, API, payments) still roadmap. |
+| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Medium** | **Storage quota** shipped (Jun 2026). Broader billing/metering (seats, API, payments) still roadmap. |
 | **Tenant API keys / webhooks** | Platform + enterprise institutes | **Medium–Low** | Webhooks for enrollments, completions, payments; API keys for CRM/ERP sync. Defer until core LMS gaps above are closed unless a client requires it. |
+| **Certificates Phase B** | Both | **Medium** | Phase A shipped (PDF + QR verify). Phase B: custom fields, batch re-issue, email delivery. |
 
 ### Other roadmap (previously listed)
 
@@ -341,6 +369,8 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 | [07-Role-Based-Operations-Guide.md](./07-Role-Based-Operations-Guide.md) | Step-by-step URLs and setup order |
 | [08-Product-Feature-Catalog.md](./08-Product-Feature-Catalog.md) | Technical feature catalog |
 | [09-Customization-Policy.md](./09-Customization-Policy.md) | What can be customized vs bespoke work |
+| [11-Roadmap-Features-E2E-Report.md](./11-Roadmap-Features-E2E-Report.md) | Jun 2026 shipped features — E2E validation |
+| [12-Technical-Handover.md](./12-Technical-Handover.md) | Architecture + codebase handover (engineers) |
 | [02-White-Label-AI-LMS-Proposal.md](./02-White-Label-AI-LMS-Proposal.md) | Original product proposal |
 
 ---

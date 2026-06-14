@@ -71,6 +71,7 @@ Example (run `20260609-152955`):
 - Set **feature flags** per tenant (live classes, mentor, self-enroll, etc.)
 - Provision **institute admin** accounts
 - Configure **tenant branding** at platform level
+- View and override **storage quota** per tenant (usage vs plan limit, byte override, bypass)
 
 ### Your menu
 
@@ -78,6 +79,7 @@ Example (run `20260609-152955`):
 |------|-----|
 | Tenant list | http://localhost:3000/superadmin |
 | Tenant detail & flags | http://localhost:3000/superadmin/tenants/{tenantId} |
+| Storage quota (all tenants) | SuperAdmin tenant list + tenant detail storage section |
 
 ### Step-by-step: onboard a new institute
 
@@ -108,13 +110,19 @@ Example (run `20260609-152955`):
 
 ### What you can do
 
-Everything for **your institute**: branding, landing page, courses, students, teachers, live classes, doubts, email, Zoom.
+Everything for **your institute**: branding, landing page, courses, students, teachers, live classes, doubts, email, Zoom, analytics, certificates, storage.
 
 ### Your admin menu (all links)
 
 | Area | URL |
 |------|-----|
+| Admin home (KPIs + storage) | http://localhost:3000/admin/home |
 | Content tree (CMS) | http://localhost:3000/admin |
+| Progress | http://localhost:3000/admin/progress |
+| Cohort analytics | http://localhost:3000/admin/analytics |
+| Question bank | http://localhost:3000/admin/question-bank |
+| Certificates | http://localhost:3000/admin/certificates |
+| Certificate template | http://localhost:3000/admin/certificates/template |
 | Teachers | http://localhost:3000/admin/teachers |
 | Students | http://localhost:3000/admin/students |
 | Doubts inbox | http://localhost:3000/admin/doubts |
@@ -139,7 +147,8 @@ Do these **once**, in order:
 | 6 | `/admin/topics/{id}` | Add video, notes, MCQs, flashcards |
 | 7 | `/admin/teachers` | Create teachers + assign subjects |
 | 8 | `/admin/students` | Create students **with bundle** (enrollment) |
-| 9 | `/admin/live-classes` | Schedule classes (pick subject + host teacher) |
+| 9 | `/admin/certificates/template` | Enable certificate template + branding (required for auto-issue) |
+| 10 | `/admin/live-classes` | Schedule classes (pick subject + host teacher) |
 
 ### Setup wizard vs checklist
 
@@ -212,6 +221,8 @@ Do these **once**, in order:
 ### What you can do
 
 - Edit **content** only for **assigned subjects**
+- View **cohort analytics** and **question bank** for assigned subjects
+- View **certificates** for students in assigned bundles
 - Schedule **live classes** (you must be host for your subjects)
 - Reply to **student doubts** for your subjects
 
@@ -219,7 +230,12 @@ Do these **once**, in order:
 
 | Area | URL |
 |------|-----|
+| Admin home | http://localhost:3000/admin/home |
 | Content (your subjects only) | http://localhost:3000/admin |
+| Progress | http://localhost:3000/admin/progress |
+| Cohort analytics | http://localhost:3000/admin/analytics |
+| Question bank | http://localhost:3000/admin/question-bank |
+| Certificates | http://localhost:3000/admin/certificates |
 | Doubts inbox | http://localhost:3000/admin/doubts |
 | Live classes | http://localhost:3000/admin/live-classes |
 | Student dashboard (your view) | http://localhost:3000/dashboard |
@@ -260,8 +276,9 @@ Do these **once**, in order:
 ### What you can do
 
 - View **enrolled courses** and topics
-- Watch videos, read notes
+- Watch videos, read notes; **video progress** saves automatically on topic player and `/videos`
 - Take **quizzes**, review **flashcards**
+- View **certificates** and download PDF when bundle is fully complete
 - See **grades** and **leaderboard**
 - Join **live classes**
 - Use **Syllabus Mentor** (AI) and **Ask Teacher** (human doubts)
@@ -275,9 +292,11 @@ Do these **once**, in order:
 | Task | URL |
 |------|-----|
 | Dashboard (+ global search) | http://localhost:3000/dashboard |
+| Video library (watch progress) | http://localhost:3000/videos |
 | Topic (video + notes) | http://localhost:3000/topic/{topicId} |
 | Daily Practice Test (quiz) | http://localhost:3000/quiz/{topicId} |
 | Flashcards | http://localhost:3000/flashcards/{topicId} |
+| Certificates | http://localhost:3000/certificates |
 | Bookmarks | http://localhost:3000/bookmarks |
 | Weakness quiz | http://localhost:3000/weakness-quiz |
 | Syllabus Mentor | http://localhost:3000/mentor |
@@ -348,6 +367,8 @@ Do these **once**, in order:
 | Outbound email | Institute Admin | `/admin/settings/email` |
 | Zoom meetings | Institute Admin | `/admin/settings/zoom` |
 | Tenant flags | SuperAdmin | `/superadmin/tenants/{id}` |
+| Storage quota override | SuperAdmin | `/superadmin/tenants/{id}` (storage section) |
+| Institute storage usage | Institute Admin | `/admin/home` |
 | Course structure | Institute Admin / Teacher | `/admin` |
 | Student accounts | Institute Admin | `/admin/students` |
 | Teacher + subjects | Institute Admin | `/admin/teachers` |
@@ -380,6 +401,9 @@ Do these **once**, in order:
 | Zoom meetings not created | Configure `/admin/settings/zoom` or use manual join URL |
 | Frontend blank / 500 error | Stop dev server, delete `frontend/.next`, run `npm run dev` again |
 | Page “Loading…” forever | Confirm API is up; check browser console |
+| Upload fails with 413 | Institute over storage quota — free space or ask SuperAdmin for override/bypass |
+| Certificate not issued | Enable template at `/admin/certificates/template`; student must complete all topics in bundle |
+| Storage widget shows 0 used | Files uploaded before metering may need backfill — re-upload or run storage backfill |
 
 ---
 
@@ -391,6 +415,7 @@ Do these **once**, in order:
 | `05-E2E-Test-Report.md` | Formal QA test cases |
 | `scripts/e2e-test-credentials.json` | Latest test logins |
 | `04-Build-Progress-Tracker.md` | Module completion status |
+| `12-Technical-Handover.md` | Architecture + codebase orientation |
 | `09-Customization-Policy.md` | What institutes can customize (branding, flags) vs paid bespoke work |
 
 ---

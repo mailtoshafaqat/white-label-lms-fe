@@ -12,6 +12,8 @@ Send to the client **before** development.
 | **8** | [08-Product-Feature-Catalog.md](./08-Product-Feature-Catalog.md) | Complete feature list + role matrix (current product) |
 | **9** | [09-Customization-Policy.md](./09-Customization-Policy.md) | What tenants can customize vs paid product changes |
 | **10** | [10-Client-Feature-List-By-Role.md](./10-Client-Feature-List-By-Role.md) | **Client / owner** — features by role + UAT summary |
+| **11** | [11-Roadmap-Features-E2E-Report.md](./11-Roadmap-Features-E2E-Report.md) | Internal: Jun 2026 roadmap features E2E validation report |
+| **12** | [12-Technical-Handover.md](./12-Technical-Handover.md) | Internal: architecture + codebase handover for new engineers |
 
 PDFs: same names with `.pdf` extension. From this folder:
 

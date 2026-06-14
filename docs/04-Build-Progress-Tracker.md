@@ -55,7 +55,11 @@
 | 17 | **Full mock exams** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | 18 | **Mobile apps** ⏸️ post-MVP | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⏸️ |
 | 19 | **Payments + parent portal** ⏸️ later | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⏸️ |
-| 20 | **Institute analytics** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| 20 | **Institute analytics** (cohort KPIs, CSV export) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 20b | **Video watch progress** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 20c | **Completion certificates (Phase A)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 20d | **MCQ question bank search** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 20e | **Storage quota metering** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
@@ -89,4 +93,9 @@
 | 2026-06-09 | Ask Teacher | Module 16: `Lms.Modules.QnA` (`qna.DoubtThreads`, `qna.DoubtMessages`), subject-routed doubt threads with enrollment gate, teacher inbox scoped by `ISubjectAccessService`, shared `IEnrolledSubjectsReader`. Student APIs `/me/doubts/*`, teacher/admin `/admin/doubts/*`. Frontend: `/doubts`, `/admin/doubts`, dashboard + topic Ask Teacher link, admin nav Doubts tab |
 | 2026-06-09 | E2E QA | Full validation: `scripts/e2e-seed-testdata.ps1`, `scripts/e2e-run-api-tests.ps1`, `05-E2E-Test-Report.md`, `06-User-Manual-Owners-Support.md`. Fixed BUG-001 admin enrollment (`ProvisionEnrollmentAsync` + `POST /admin/students/{id}/enroll`) |
 | 2026-06-12 | Student learning | **Bookmarks** (`progress.Bookmarks`), **global search** (`GET /search`), **weakness quiz** (`GET/POST /me/weakness-quiz`). Frontend: `/bookmarks`, `/weakness-quiz`, dashboard search. Test: `backend/scripts/test-student-learning-features.ps1`. Docs: `08-Product-Feature-Catalog.md` |
+| 2026-06-12 | Video progress | **Lecture watch progress** (`progress.LectureWatchProgress`): `PUT/GET /me/lectures/{id}/progress`, bulk GET. Topic complete when all lectures ≥90% or quiz submitted. Frontend: `/videos`, topic player, dashboard bundle bars. Test: `test-roadmap-features.ps1` |
+| 2026-06-12 | Certificates | **Phase A:** `CertificateTemplate` per tenant, auto-issue on bundle completion, QuestPDF + QRCoder PDF, public verify at `/api/v1/public/certificates/verify/{number}`. Frontend: `/admin/certificates`, `/admin/certificates/template`, `/certificates`, `/verify/[number]`. Test: `test-certificate-student1.ps1` (9/9) |
+| 2026-06-12 | Analytics | **Cohort analytics:** `GET /admin/analytics/cohort*`, CSV export. Frontend: `/admin/analytics`. Test: `test-roadmap-features.ps1` |
+| 2026-06-12 | Question bank | **MCQ search:** `GET /admin/questions/search?q=`. Frontend: `/admin/question-bank`. Test: `test-roadmap-features.ps1` |
+| 2026-06-12 | Storage quota | **Per-tenant storage metering:** `TenantStorageObject`, `TenantStorageQuotaService`, MVP 20 GB / Pro 100 GB (`StorageQuota` appsettings). `GET /admin/storage`, SuperAdmin override/bypass. Upload returns 413 when over quota. Test: `test-storage-quota.ps1` |
 | 2026-06-08 | Phase 2 | **Landing-page builder** (Module 11): `platform.LandingPages` + `PageSections` (Hero/Features/Footer, JSON content). Public `GET /public/landing/{slug}`, admin `GET/PUT /admin/settings/landing`. Frontend section registry on `/`, admin editor `/admin/settings/landing`. Demo seeded with hero + 3 feature cards + footer. **Subdomain resolution**: `ITenantResolver` + `TenantResolutionMiddleware` (`demo.localhost` → tenant), `TenantContext` uses JWT → subdomain → default; Next.js `middleware.ts` sets `lms.tenantSlug` cookie; CORS allows `*.localhost:3000`. **Logo upload**: `POST /admin/files?folder=branding` (image-only, 2 MB), admin branding UI file picker + preview, `resolveAssetUrl` for API paths. E2E verified (public landing API, builds clean) |
