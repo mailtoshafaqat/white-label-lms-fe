@@ -51,6 +51,7 @@ export function getAdminNavItems(session: AuthSession): AdminNavItem[] {
     const coreAfter: AdminNavItem[] = [
       { href: "/admin/teachers", label: "Teachers", group: "core" },
       { href: "/admin/students", label: "Students", group: "core" },
+      { href: "/admin/payments", label: "Payments", group: "core" },
       { href: "/admin/settings", label: "Settings", group: "core" },
     ];
     return [...coreBefore, ...academy, ...coreAfter];

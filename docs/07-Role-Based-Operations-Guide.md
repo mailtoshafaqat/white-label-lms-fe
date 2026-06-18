@@ -22,6 +22,8 @@ Optional test data: `.\scripts\e2e-seed-testdata.ps1` → passwords in `scripts/
 
 Student features smoke test: `cd backend/scripts` → `.\test-student-learning-features.ps1` (bookmarks, search, weakness quiz)
 
+Payment flows smoke test: `cd backend/scripts` → `.\test-payments.ps1` (manual, JazzCash, Easypaisa, approve/reject, admin record-manual)
+
 ---
 
 ## Pick your role
@@ -125,6 +127,8 @@ Everything for **your institute**: branding, landing page, courses, students, te
 | Certificate template | http://localhost:3000/admin/certificates/template |
 | Teachers | http://localhost:3000/admin/teachers |
 | Students | http://localhost:3000/admin/students |
+| Payments | http://localhost:3000/admin/payments |
+| Payment settings | http://localhost:3000/admin/settings/payments |
 | Doubts inbox | http://localhost:3000/admin/doubts |
 | Live classes | http://localhost:3000/admin/live-classes |
 | Branding | http://localhost:3000/admin/settings/branding |
@@ -142,13 +146,14 @@ Do these **once**, in order:
 | 1 | `/admin/settings/branding` | Display name, logo, primary colour, favicon |
 | 2 | `/admin/settings/landing` | Hero, features, footer sections |
 | 3 | `/admin/settings/email` | SMTP (or use dev-outbox in `backend/dev-emails/`) |
-| 4 | `/admin/settings/zoom` | Zoom OAuth **or** skip and use manual join URLs |
-| 5 | `/admin` | Build bundle → subject → unit → topic |
-| 6 | `/admin/topics/{id}` | Add video, notes, MCQs, flashcards |
-| 7 | `/admin/teachers` | Create teachers + assign subjects |
-| 8 | `/admin/students` | Create students **with bundle** (enrollment) |
-| 9 | `/admin/certificates/template` | Enable certificate template + branding (required for auto-issue) |
-| 10 | `/admin/live-classes` | Schedule classes (pick subject + host teacher) |
+| 4 | `/admin/settings/payments` | Enable gateways (Stripe, JazzCash, Easypaisa, manual); currency; bank instructions |
+| 5 | `/admin/settings/zoom` | Zoom OAuth **or** skip and use manual join URLs |
+| 6 | `/admin` | Build bundle → subject → unit → topic |
+| 7 | `/admin/topics/{id}` | Add video, notes, MCQs, flashcards |
+| 8 | `/admin/teachers` | Create teachers + assign subjects |
+| 9 | `/admin/students` | Create students **with bundle** (enrollment) |
+| 10 | `/admin/certificates/template` | Enable certificate template + branding (required for auto-issue) |
+| 11 | `/admin/live-classes` | Schedule classes (pick subject + host teacher) |
 
 ### Setup wizard vs checklist
 
@@ -166,6 +171,37 @@ Do these **once**, in order:
 3. Copy the **temporary password** shown on screen
 4. Send credentials to the student (email if SMTP is configured)
 5. Student logs in at http://localhost:3000/login?tenant=demo → changes password → sees dashboard
+
+### Step-by-step: enroll an existing student
+
+Use when the student account already exists but needs access to another bundle (or was created without a bundle).
+
+1. Go to http://localhost:3000/admin/students
+2. Find the student → click the **calendar** icon (enrollments)
+3. Click **Enroll in course/batch** → select bundle → optional expiry date → **Enroll**
+4. Student refreshes dashboard — enrolled content appears
+
+> If enrollment already exists but **expired**, use **Extend access** instead of enrolling again.
+
+### Step-by-step: record offline payment & enroll
+
+Use when a student **already has an account** and paid offline (bank/cash). No student checkout required.
+
+1. Go to http://localhost:3000/admin/payments
+2. In **Record offline payment & enroll**, select **student**, **bundle**, enter **transaction reference** (required) and optional note
+3. Submit — order is marked **Paid** and student is enrolled immediately
+
+Manual proof is **text only** (transaction reference + note). There is no screenshot upload in the app.
+
+### Step-by-step: student pays via checkout (manual or online)
+
+Use when the student should submit payment themselves.
+
+1. Configure gateways at `/admin/settings/payments`
+2. Student logs in → dashboard → **Enroll** or **Checkout** on a paid bundle → `/checkout/{bundleId}`
+3. **Manual:** enter transaction reference + optional note → waits for admin approval at `/admin/payments`
+4. **Online:** Stripe / JazzCash / Easypaisa → auto-enroll on successful payment
+5. Use **Back to dashboard** on checkout to cancel without paying
 
 ### Student account actions (Institute Admin)
 
@@ -185,7 +221,7 @@ Do these **once**, in order:
 
 > **Password reset scope:** Institute Admin resets **students and teachers**. SuperAdmin resets **institute admins** on the tenant page.
 
-> **Important:** Demo tenant has self-enroll **off**. Students must be enrolled by admin at creation (or via enroll action). This is expected.
+> **Important:** Demo tenant has self-enroll **off**. Students must be enrolled by admin at creation, via **Enroll in course/batch**, via **record offline payment**, or after **checkout approval**. This is expected.
 
 ### Step-by-step: assign a teacher
 
@@ -206,6 +242,8 @@ Do these **once**, in order:
 - [ ] Login as `admin@demo.com`
 - [ ] Update branding → refresh dashboard header
 - [ ] Create one student with bundle
+- [ ] Enroll an existing student in a second bundle (enrollments panel)
+- [ ] Record one offline payment at `/admin/payments` (optional)
 - [ ] Create one teacher + assign subject
 - [ ] Schedule one live class
 - [ ] Open doubts inbox http://localhost:3000/admin/doubts
@@ -302,6 +340,7 @@ Do these **once**, in order:
 | Syllabus Mentor | http://localhost:3000/mentor |
 | Ask Teacher | http://localhost:3000/doubts |
 | Mistake diary | http://localhost:3000/mistakes |
+| Checkout (paid bundle) | http://localhost:3000/checkout/{bundleId} |
 | Forgot password | http://localhost:3000/forgot-password?tenant=demo |
 
 ### Step-by-step: daily learning flow
@@ -337,6 +376,15 @@ Do these **once**, in order:
 3. Return to `/doubts` to see replies
 4. Add **follow-up** while thread is Open
 
+### Step-by-step: pay for a course (checkout)
+
+1. On dashboard, find a **paid** bundle with checkout enabled → click to open `/checkout/{bundleId}`
+2. Select country (JazzCash/Easypaisa show for Pakistan)
+3. Choose payment method:
+   - **Manual** — pay per institute instructions → enter **transaction reference** → submit → admin approves at `/admin/payments`
+   - **Online** — continue to Stripe / JazzCash / Easypaisa
+4. After enrollment, open topics from dashboard — content requires active enrollment
+
 ### Step-by-step: use Syllabus Mentor (AI)
 
 1. http://localhost:3000/mentor **or** side panel on topic page
@@ -366,6 +414,7 @@ Do these **once**, in order:
 | Public landing page | Institute Admin | `/admin/settings/landing` |
 | Outbound email | Institute Admin | `/admin/settings/email` |
 | Zoom meetings | Institute Admin | `/admin/settings/zoom` |
+| Payment gateways | Institute Admin | `/admin/settings/payments` |
 | Tenant flags | SuperAdmin | `/superadmin/tenants/{id}` |
 | Storage quota override | SuperAdmin | `/superadmin/tenants/{id}` (storage section) |
 | Institute storage usage | Institute Admin | `/admin/home` |
@@ -394,7 +443,9 @@ Do these **once**, in order:
 | Forgot student password | Institute admin uses **Reset password** on `/admin/students` |
 | Forgot teacher password | Institute admin uses **Reset password** on `/admin/teachers` |
 | Teacher login fails after block | Institute admin must **Activate** at `/admin/teachers` |
-| Student sees no courses | Admin must enroll student in a bundle (`/admin/students` with bundle selected) |
+| Student sees no courses | Admin must enroll student in a bundle (`/admin/students` — create with bundle, **Enroll in course/batch**, or **record offline payment** at `/admin/payments`) |
+| Student gets 403 on topic/quiz | Student is logged in but **not enrolled** in that bundle — enroll or extend access |
+| Topic content visible without login | Members-only lectures hide URL; full enrollment enforcement applies once logged in as student |
 | Teacher sees empty CMS | Institute admin must assign subjects at `/admin/teachers` |
 | Doubts return error | Student must be enrolled in the subject’s bundle |
 | Emails not sent | Configure SMTP or check `backend/dev-emails/*.html` |

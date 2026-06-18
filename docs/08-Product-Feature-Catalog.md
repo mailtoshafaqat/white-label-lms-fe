@@ -1,6 +1,6 @@
 # White-Label LMS — Product Feature Catalog
 
-**Last updated:** June 2026  
+**Last updated:** 18 June 2026  
 **Scope:** Features implemented in the web app today (not roadmap-only items).
 
 Use with [07-Role-Based-Operations-Guide.md](./07-Role-Based-Operations-Guide.md) for login URLs and step-by-step flows.  
@@ -38,6 +38,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 ### Content (video + notes)
 - Video lectures per topic (members-only when configured)
+- **Enrollment-gated access** — students must have active bundle enrollment for topic content, quizzes, and lecture/note file downloads (admins/teachers exempt)
 - **Video watch progress** — monotonic 0–100% per lecture; topic complete when all lectures ≥90% **or** quiz submitted
 - Student video library (`/videos`) with progress bars; dashboard bundle completion bars
 - Rich HTML notes + file upload
@@ -93,8 +94,18 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 ### Enrollment & students
 - Bundle enrollment with expiry
 - Admin create students, reset passwords, activate/block
+- **Admin enroll existing student** in a bundle (`POST /api/v1/admin/students/{userId}/enroll`)
+- **Extend enrollment** expiry per bundle
 - Self-enroll toggle per tenant
 - Guardian weekly report stub (email when SMTP configured)
+
+### Payments (student checkout)
+- Per-tenant payment settings — Stripe, JazzCash, Easypaisa, manual bank transfer; currency; manual instructions
+- Student checkout (`/checkout/{bundleId}`) with country-aware gateway list
+- **Manual payment** — student submits transaction reference + optional note → admin approve/reject
+- **Online payment** — Stripe / JazzCash / Easypaisa webhooks mark paid and enroll
+- **Admin record offline payment** — `POST /api/v1/admin/payments/record-manual` for existing students (paid + enrolled immediately)
+- Redirect URLs use `App:BaseUrl` / `App:ApiBaseUrl` in `appsettings.json` (not hardcoded localhost)
 
 ### Teachers
 - Provision teachers; assign catalog subjects
@@ -139,6 +150,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | Subject catalog | — | — | ✅ | — | — |
 | Content CMS | — | — | ✅ | ✅* | — |
 | Students & enrollment | — | — | ✅ | — | — |
+| Payments (settings, approve, record offline) | — | — | ✅ | — | — |
 | Teachers | — | — | ✅ | — | — |
 | Live classes (manage) | — | — | ✅ | ✅* | — |
 | Doubts (reply) | — | — | ✅ | ✅* | — |
@@ -150,19 +162,22 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | Video watch progress | — | — | — | — | ✅ |
 | Earn / download certificates | — | — | — | — | ✅ |
 | Dashboard & topics | — | — | — | — | ✅ |
-| Quizzes & flashcards | — | — | — | — | ✅ |
+| Quizzes & flashcards | — | — | — | — | ✅‡ |
+| Checkout & pay | — | — | — | — | ✅§ |
 | Grades & leaderboard | — | — | — | — | ✅ |
 | Global search | — | — | — | — | ✅ |
 | Bookmarks | — | — | — | — | ✅ |
 | Mistake diary | — | — | — | — | ✅† |
 | Weakness quiz | — | — | — | — | ✅† |
-| Syllabus Mentor | — | — | — | — | ✅‡ |
-| Ask Teacher | — | — | — | — | ✅‡ |
-| Live class join | — | — | — | — | ✅‡ |
+| Syllabus Mentor | — | — | — | — | ✅¶ |
+| Ask Teacher | — | — | — | — | ✅¶ |
+| Live class join | — | — | — | — | ✅¶ |
 
 \* Teacher: only for **assigned subjects**.  
 † Requires **Mistake diary** enabled (ExamPrep / Both).  
-‡ Requires tenant flag + enrollment where applicable.
+‡ Requires **active enrollment** in the bundle for topic content and quizzes.  
+§ When paid checkout is enabled for the bundle.  
+¶ Requires tenant flag + enrollment where applicable.
 
 ---
 
@@ -208,6 +223,19 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | GET | `/api/v1/admin/storage` | Institute storage usage vs quota |
 | GET | `/api/v1/superadmin/tenants/storage` | All tenants storage summary |
 | PUT | `/api/v1/superadmin/tenants/{id}/storage` | Override quota or bypass |
+| GET | `/api/v1/topics/{topicId}/content` | Topic lectures & notes (enrollment required for students) |
+| GET | `/api/v1/files/{*key}` | Lecture/note download (enrollment required for students) |
+| GET | `/api/v1/topics/{topicId}/quiz` | Topic quiz (enrollment required for students) |
+| GET | `/api/v1/payments/available-gateways` | Gateways for a bundle |
+| POST | `/api/v1/payments/checkout` | Start online checkout |
+| POST | `/api/v1/payments/manual` | Student submit manual payment proof |
+| GET | `/api/v1/admin/payments` | List payment orders |
+| POST | `/api/v1/admin/payments/{id}/approve` | Approve manual payment → enroll |
+| POST | `/api/v1/admin/payments/{id}/reject` | Reject manual payment |
+| POST | `/api/v1/admin/payments/record-manual` | Admin record offline payment + enroll |
+| POST | `/api/v1/admin/students/{userId}/enroll` | Admin enroll existing student `{ bundleId }` |
+| GET | `/api/v1/admin/students/{userId}/enrollments` | List student enrollments |
+| PUT | `/api/v1/admin/students/{userId}/enrollments/{bundleId}` | Extend enrollment expiry |
 
 ---
 
@@ -220,6 +248,7 @@ cd backend/scripts
 .\test-roadmap-features.ps1
 .\test-certificate-student1.ps1
 .\test-storage-quota.ps1
+.\test-payments.ps1
 ```
 
 Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against the **demo** tenant (`student1@demo.com`).
@@ -244,6 +273,12 @@ Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against
 ### Other
 
 - Mobile apps  
-- Payments & parent portal (student checkout)  
-- Bookmarks for AI mentor answers (proposal only)  
+- Parent portal (guardian email reports exist; no parent login yet)  
+- Flashcards / mentor API enrollment gates (topic content & quizzes gated; flashcards not yet)  
 - **Configurable file storage (pending — discuss)** — `appsettings.json` `FileStorage` section with provider `Local` | `R2` | `Azure` for lecture video and note (PDF/DOC) uploads. MVP uses `LocalDiskFileStorage` only; swap via DI not implemented.
+
+### Shipped June 2026 — payments & enrollment enforcement
+
+- Student checkout (Stripe, JazzCash, Easypaisa, manual txn reference)  
+- Admin payment inbox + record offline payment & enroll  
+- `IEnrollmentAccessGuard` on topic content, quizzes, lecture/note files

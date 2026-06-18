@@ -16,6 +16,7 @@ import { isTrialExpired } from "@/lib/trial";
 import { fetchBranding, getTenantSlug, type BrandingDto } from "@/lib/branding";
 import { resolveAssetUrl } from "@/lib/assets";
 import { getAdminNavItems, showNavGroupLabels, type AdminNavItem } from "@/lib/admin-nav-config";
+import { adminApi } from "@/lib/api";
 
 const MOBILE_PRIMARY_COUNT = 3;
 
@@ -39,6 +40,7 @@ function isNavActive(pathname: string, href: string): boolean {
   if (href === "/admin/checklist") return pathname === "/admin/checklist";
   if (href === "/admin/setup") return pathname === "/admin/setup";
   if (href === "/admin/settings") return pathname.startsWith("/admin/settings");
+  if (href === "/admin/payments") return pathname.startsWith("/admin/payments");
   return pathname.startsWith(href);
 }
 
@@ -47,11 +49,13 @@ function NavLink({
   pathname,
   onNavigate,
   className = "",
+  badge,
 }: {
   item: AdminNavItem;
   pathname: string;
   onNavigate?: () => void;
   className?: string;
+  badge?: number;
 }) {
   const active = isNavActive(pathname, item.href);
   return (
@@ -63,6 +67,15 @@ function NavLink({
       } ${className}`}
     >
       {item.label}
+      {badge && badge > 0 ? (
+        <span
+          className={`ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+            active ? "bg-white/20 text-white" : "bg-amber-500 text-white"
+          }`}
+        >
+          {badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -75,6 +88,7 @@ function MobileNavMenu({
   pathname,
   open,
   onClose,
+  pendingPayments,
 }: {
   tabs: AdminNavItem[];
   grouped: boolean;
@@ -83,6 +97,7 @@ function MobileNavMenu({
   pathname: string;
   open: boolean;
   onClose: () => void;
+  pendingPayments: number;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -103,6 +118,7 @@ function MobileNavMenu({
         pathname={pathname}
         onNavigate={onClose}
         className="block w-full px-4 py-2.5"
+        badge={t.href === "/admin/payments" ? pendingPayments : undefined}
       />
     ));
   }
@@ -163,6 +179,7 @@ export function AdminNav() {
   const [showTrialBanner, setShowTrialBanner] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [instituteAdmin, setInstituteAdmin] = useState(false);
+  const [pendingPayments, setPendingPayments] = useState(0);
 
   useEffect(() => {
     const session = getSession();
@@ -184,6 +201,9 @@ export function AdminNav() {
       setBranding(b);
       setHomeLabel(b.displayName || session.tenant?.tenantName || "Admin");
     });
+    if (canManageInstitute(session)) {
+      void adminApi.pendingPaymentCount().then((r) => setPendingPayments(r.count)).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -290,7 +310,12 @@ export function AdminNav() {
         {/* Mobile: primary links + More */}
         <nav className="mt-3 flex items-center gap-1 md:hidden">
           {mobilePrimary.map((t) => (
-            <NavLink key={t.href} item={t} pathname={pathname} />
+            <NavLink
+              key={t.href}
+              item={t}
+              pathname={pathname}
+              badge={t.href === "/admin/payments" ? pendingPayments : undefined}
+            />
           ))}
           {hasOverflow && (
             <button
@@ -313,7 +338,12 @@ export function AdminNav() {
           {grouped ? (
             <>
               {rest.map((t) => (
-                <NavLink key={t.href} item={t} pathname={pathname} />
+                <NavLink
+                  key={t.href}
+                  item={t}
+                  pathname={pathname}
+                  badge={t.href === "/admin/payments" ? pendingPayments : undefined}
+                />
               ))}
               {academy.length > 0 && (
                 <>
@@ -330,13 +360,25 @@ export function AdminNav() {
                     </span>
                   </span>
                   {academy.map((t) => (
-                    <NavLink key={t.href} item={t} pathname={pathname} />
+                    <NavLink
+                      key={t.href}
+                      item={t}
+                      pathname={pathname}
+                      badge={t.href === "/admin/payments" ? pendingPayments : undefined}
+                    />
                   ))}
                 </>
               )}
             </>
           ) : (
-            tabs.map((t) => <NavLink key={t.href} item={t} pathname={pathname} />)
+            tabs.map((t) => (
+              <NavLink
+                key={t.href}
+                item={t}
+                pathname={pathname}
+                badge={t.href === "/admin/payments" ? pendingPayments : undefined}
+              />
+            ))
           )}
         </nav>
       </header>
@@ -349,6 +391,7 @@ export function AdminNav() {
         pathname={pathname}
         open={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        pendingPayments={pendingPayments}
       />
     </>
   );

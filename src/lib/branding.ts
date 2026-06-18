@@ -13,6 +13,7 @@ export type BrandingDto = {
   syllabusMentorEnabled: boolean;
   bundlePriceEditEnabled: boolean;
   mcqBulkImportEnabled: boolean;
+  allowStudentSelfEnroll: boolean;
 };
 
 export function mentorLabel(b: BrandingDto | null): string {
@@ -85,6 +86,7 @@ export function brandingFromForm(
     syllabusMentorEnabled: saved?.syllabusMentorEnabled ?? true,
     bundlePriceEditEnabled: saved?.bundlePriceEditEnabled ?? true,
     mcqBulkImportEnabled: saved?.mcqBulkImportEnabled ?? true,
+    allowStudentSelfEnroll: saved?.allowStudentSelfEnroll ?? false,
   };
 }
 

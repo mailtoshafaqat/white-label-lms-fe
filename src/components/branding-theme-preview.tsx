@@ -51,6 +51,7 @@ export function BrandingThemePreview({
       syllabusMentorEnabled: saved?.syllabusMentorEnabled ?? true,
       bundlePriceEditEnabled: saved?.bundlePriceEditEnabled ?? true,
       mcqBulkImportEnabled: saved?.mcqBulkImportEnabled ?? true,
+      allowStudentSelfEnroll: saved?.allowStudentSelfEnroll ?? false,
     }),
     [form, saved, brand],
   );

@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { getSession, canManageInstitute } from "@/lib/auth";
 import { profileBundleLabel } from "@/lib/product-profile";
+import { COUNTRY_OPTIONS } from "@/lib/countries";
 
 function AdminStudentsContent() {
   const router = useRouter();
@@ -37,6 +38,7 @@ function AdminStudentsContent() {
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [country, setCountry] = useState("");
   const [bundleId, setBundleId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedStudentDto | null>(null);
@@ -104,10 +106,12 @@ function AdminStudentsContent() {
         fullName,
         email,
         bundleId: bundleId || null,
+        country: country || null,
       });
       setCreated(result);
       setFullName("");
       setEmail("");
+      setCountry("");
       setBundleId("");
       await list.reload();
     } catch (err) {
@@ -205,6 +209,26 @@ function AdminStudentsContent() {
                 <p className="mt-1 text-xs text-slate-500">
                   Account details (email + temporary password) are sent to this address. The student
                   uses it to sign in.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Country (optional)
+                </label>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+                >
+                  <option value="">Not set</option>
+                  {COUNTRY_OPTIONS.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Used to pre-fill checkout payment options for this student.
                 </p>
               </div>
               <div className="sm:col-span-2">
@@ -484,6 +508,8 @@ function AdminStudentsContent() {
                       <td colSpan={5} className="p-0">
                         <StudentEnrollmentsPanel
                           student={s}
+                          bundles={bundles}
+                          bundleLabel={bundleLabel}
                           onClose={() => setEnrollmentStudent(null)}
                         />
                       </td>

@@ -2,7 +2,7 @@
 
 **Document for:** Institute owners, clients, and stakeholders  
 **Product version:** June 2026 (current web release)  
-**Validation:** Automated API smoke tests + student learning suite run on **12 June 2026** against local demo tenant
+**Validation:** Automated API smoke tests + student learning suite run on **12 June 2026**; payment & enrollment flows verified **18 June 2026** (`test-payments.ps1` 23/23)
 
 ---
 
@@ -138,8 +138,20 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Teachers** | Create accounts; assign catalog subjects or per-course placements; reset password; block/activate |
 | **Students** | Create accounts with optional course enrollment; reset password; block/activate |
 | **Student profile** | Phone, address, date of birth, photo (admin-managed) |
-| **Enrollments** | View and extend course access expiry |
+| **Enrollments** | View enrollments; **enroll existing student** in a new bundle; **extend** course access expiry |
 | **Guardians** | Link parent/guardian emails for weekly report emails (when SMTP configured) |
+
+### Payments (student checkout & admin)
+
+| Feature | Description |
+|---------|-------------|
+| **Payment settings** | Enable gateways per institute (Stripe, JazzCash, Easypaisa, manual bank transfer); currency; manual instructions |
+| **Student checkout** | Paid bundles → checkout with country-aware gateway list (`/checkout/{bundleId}`) |
+| **Manual payment (student)** | Student submits **transaction reference** + optional note; admin approves or rejects |
+| **Online payment** | Stripe, JazzCash, Easypaisa — webhook marks order paid and enrolls student |
+| **Admin payment inbox** | List orders; approve/reject pending manual submissions (`/admin/payments`) |
+| **Record offline payment** | Admin records bank/cash payment for an **existing** student → marks paid and enrolls immediately (no student checkout) |
+| **Enrollment enforcement** | Topic content, quizzes, and lecture/note file downloads require **active enrollment** (admins/teachers exempt) |
 
 ### Academy & engagement (profile / flags)
 
@@ -173,6 +185,8 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | Subject catalog | `/admin/subjects` |
 | Teachers | `/admin/teachers` |
 | Students | `/admin/students` |
+| Payments | `/admin/payments` |
+| Payment settings | `/admin/settings/payments` |
 | Live classes | `/admin/live-classes` |
 | Doubts | `/admin/doubts` |
 | Mock exams | `/admin/mock-exams` |
@@ -220,8 +234,9 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 |---------|-------------|
 | **Student dashboard** | Greeting, KPIs (accuracy, rank, streak, MCQs this month), subject accuracy chart, 7-day trend, leaderboard, live classes, recent topics |
 | **Global search** | Find topics and subjects by keyword |
-| **Course catalog** | Browse published courses/batches; self-enroll when institute allows |
-| **Topic learning** | Watch video, read notes, take topic quiz, flashcards |
+| **Course catalog** | Browse published courses/batches; self-enroll when institute allows; **checkout** for paid bundles |
+| **Checkout** | Pay online (Stripe / JazzCash / Easypaisa) or submit manual payment proof (txn reference + note) |
+| **Topic learning** | Watch video, read notes, take topic quiz, flashcards — **requires enrollment** |
 | **Video library** | All lectures with watch progress (`/videos`) |
 | **Bundle progress** | Dashboard bars show video + quiz completion per enrolled bundle |
 
@@ -273,6 +288,7 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 | Mentor | `/mentor` |
 | Doubts | `/doubts` |
 | Mock exams | `/mock-exams` |
+| Checkout | `/checkout/{bundleId}` |
 | Live classes | From dashboard |
 
 ---
@@ -305,6 +321,7 @@ SuperAdmin can override individual flags per institute. See [09-Customization-Po
 | Branding & landing page | — | — | ✅ | — | — |
 | Full content CMS | — | — | ✅ | ✅* | — |
 | All students & teachers | — | — | ✅ | — | — |
+| Payments (approve / record offline) | — | — | ✅ | — | — |
 | Student progress analytics | — | — | ✅ | ✅* | — |
 | Cohort analytics + CSV | — | — | ✅ | ✅* | — |
 | Question bank search | — | — | ✅ | ✅* | — |
@@ -314,14 +331,17 @@ SuperAdmin can override individual flags per institute. See [09-Customization-Po
 | Earn / download certificates | — | — | — | — | ✅ |
 | Live classes (manage) | — | — | ✅ | ✅* | — |
 | Doubts (reply) | — | — | ✅ | ✅* | — |
-| Learn & take quizzes | — | — | — | — | ✅ |
+| Learn & take quizzes | — | — | — | — | ✅‡ |
+| Checkout & pay for course | — | — | — | — | ✅§ |
 | Dashboard & leaderboard | — | — | — | — | ✅ |
 | Bookmarks & search | — | — | — | — | ✅ |
 | AI mentor | — | — | — | — | ✅† |
 | Join live class | — | — | — | — | ✅† |
 
 \* Scoped to **assigned subjects** only.  
-† Requires tenant flag and enrollment where applicable.
+† Requires tenant flag and enrollment where applicable.  
+‡ Topic quizzes and content require **active enrollment** in the bundle.  
+§ When institute enables paid checkout and bundle has a price > 0.
 
 ---
 
@@ -356,9 +376,14 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 ### Other roadmap (previously listed)
 
 - Native mobile apps (iOS / Android)
-- In-app payments and checkout (student checkout — separate from platform tenant billing)
 - Parent portal (guardian email reports exist; no parent login yet)
 - **Configurable file storage (pending — discuss)** — `appsettings` provider switch for video and PDF/DOC uploads: **Local disk** (current MVP), **Cloudflare R2**, or **Azure Blob**. Today uploads work on local disk only (`IFileStorage` abstraction exists; R2/Azure implementations and `FileStorage` config section not built yet).
+
+### Shipped June 2026 (payments)
+
+- **Student checkout** — Stripe, JazzCash, Easypaisa, manual bank transfer (txn reference only; no screenshot upload)
+- **Admin payment inbox** — approve/reject manual submissions; **record offline payment & enroll** for existing students
+- **Enrollment API enforcement** — topic content, quizzes, lecture/note files gated by active bundle enrollment
 
 ---
 

@@ -22,6 +22,8 @@ import { SuperAdminShell } from "@/components/superadmin-shell";
 import { StorageUsageCard } from "@/components/storage-usage-card";
 import {
   superAdminApi,
+  PAYMENT_GATEWAY_FLAGS,
+  ENROLLMENT_MODE_FLAGS,
   type TenantDetailDto,
   type CreatedInstituteAdminDto,
   type InstituteAdminListItemDto,
@@ -134,6 +136,10 @@ export default function TenantDetailPage() {
         bundlePriceEditEnabled: tenant.bundlePriceEditEnabled,
         mcqBulkImportEnabled: tenant.mcqBulkImportEnabled,
         trialEndsAt: tenant.trialEndsAt,
+        country: tenant.country ?? "PK",
+        currency: tenant.currency ?? "PKR",
+        allowedPaymentGateways: tenant.allowedPaymentGateways ?? 0,
+        enrollmentModes: tenant.enrollmentModes ?? 0,
       });
       setTenant(updated);
       setSaved(true);
@@ -538,6 +544,82 @@ export default function TenantDetailPage() {
               />
               MCQ bulk CSV import (teachers + institute admin)
             </label>
+
+            <div className="mt-4 border-t border-slate-700 pt-4">
+              <p className="mb-3 text-sm font-medium text-slate-300">Payments & enrollment</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Country (ISO)</label>
+                  <input
+                    className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white"
+                    value={tenant.country ?? "PK"}
+                    maxLength={2}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, country: e.target.value.toUpperCase() })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Currency</label>
+                  <input
+                    className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white"
+                    value={tenant.currency ?? "PKR"}
+                    maxLength={3}
+                    onChange={(e) =>
+                      setTenant({ ...tenant, currency: e.target.value.toUpperCase() })
+                    }
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">Allowed payment gateways</p>
+              {(
+                [
+                  ["Manual", PAYMENT_GATEWAY_FLAGS.Manual],
+                  ["Stripe", PAYMENT_GATEWAY_FLAGS.Stripe],
+                  ["JazzCash", PAYMENT_GATEWAY_FLAGS.JazzCash],
+                  ["Easypaisa", PAYMENT_GATEWAY_FLAGS.Easypaisa],
+                ] as const
+              ).map(([label, bit]) => (
+                <label key={label} className="mt-2 flex items-center gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={((tenant.allowedPaymentGateways ?? 0) & bit) === bit}
+                    onChange={(e) => {
+                      const cur = tenant.allowedPaymentGateways ?? 0;
+                      setTenant({
+                        ...tenant,
+                        allowedPaymentGateways: e.target.checked ? cur | bit : cur & ~bit,
+                      });
+                    }}
+                  />
+                  {label}
+                </label>
+              ))}
+              <p className="mt-3 text-xs text-slate-500">Default enrollment modes</p>
+              {(
+                [
+                  ["Self-enroll free courses", ENROLLMENT_MODE_FLAGS.SelfEnrollFree],
+                  ["Manual payment", ENROLLMENT_MODE_FLAGS.ManualPayment],
+                  ["Online checkout", ENROLLMENT_MODE_FLAGS.OnlineCheckout],
+                ] as const
+              ).map(([label, bit]) => (
+                <label key={label} className="mt-2 flex items-center gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={((tenant.enrollmentModes ?? 0) & bit) === bit}
+                    onChange={(e) => {
+                      const cur = tenant.enrollmentModes ?? 0;
+                      setTenant({
+                        ...tenant,
+                        enrollmentModes: e.target.checked ? cur | bit : cur & ~bit,
+                      });
+                    }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
             <div className="flex items-center gap-3">
               <button type="submit" disabled={saving} className={btn}>
                 <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save flags"}

@@ -119,6 +119,11 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  register: (body: { email: string; password: string; fullName: string }) =>
+    request<AuthSession>("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request<{ changed: boolean }>("/api/v1/auth/change-password", {
       method: "POST",
@@ -143,7 +148,9 @@ export type UserProfileDto = {
   fullName: string;
   role: string;
   phone: string | null;
+  country: string | null;
   profilePictureUrl: string | null;
+  tenantDefaultCountry: string;
 };
 
 export type BundleDto = {
@@ -569,6 +576,7 @@ export type AdminCertificateDto = {
 };
 
 export type EnrollmentDto = {
+  id: string;
   bundleId: string;
   bundleTitle: string;
   pricePaid: number;
@@ -582,6 +590,152 @@ export const enrollmentApi = {
   myEnrollments: () => request<EnrollmentDto[]>(`/api/v1/me/enrollments`),
   enroll: (bundleId: string) =>
     request<EnrollmentDto>(`/api/v1/bundles/${bundleId}/enroll`, { method: "POST" }),
+};
+
+export type PaymentGateway = "Manual" | "Stripe" | "JazzCash" | "Easypaisa";
+export type PaymentStatus =
+  | "Pending"
+  | "AwaitingApproval"
+  | "Processing"
+  | "Paid"
+  | "Failed"
+  | "Cancelled"
+  | "Refunded";
+
+export type AvailableGatewayDto = {
+  gateway: PaymentGateway;
+  label: string;
+  instructions: string | null;
+};
+
+export type PaymentOrderDto = {
+  id: string;
+  bundleId: string;
+  bundleTitle: string;
+  amount: number;
+  currency: string;
+  gateway: PaymentGateway;
+  status: PaymentStatus;
+  externalPaymentId: string | null;
+  paidAt: string | null;
+  enrollmentId: string | null;
+  createdAt: string;
+  failureReason: string | null;
+};
+
+export type CheckoutFormPost = {
+  actionUrl: string;
+  fields: Record<string, string>;
+};
+
+export type CheckoutResponse = {
+  orderId: string;
+  gateway: PaymentGateway;
+  status: PaymentStatus;
+  checkoutUrl: string | null;
+  sessionId: string | null;
+  instructions: string | null;
+  formPost: CheckoutFormPost | null;
+};
+
+export type AdminPaymentOrderDto = {
+  id: string;
+  userId: string;
+  studentFullName: string | null;
+  studentEmail: string | null;
+  bundleId: string;
+  bundleTitle: string;
+  amount: number;
+  currency: string;
+  gateway: PaymentGateway;
+  status: PaymentStatus;
+  externalPaymentId: string | null;
+  note: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+  paidAt: string | null;
+};
+
+export const ENROLLMENT_MODE_FLAGS = {
+  SelfEnrollFree: 1,
+  ManualPayment: 2,
+  OnlineCheckout: 4,
+} as const;
+export const PAYMENT_GATEWAY_FLAGS = {
+  Manual: 1,
+  Stripe: 2,
+  JazzCash: 4,
+  Easypaisa: 8,
+} as const;
+
+export type PaymentSettingsDto = {
+  enrollmentModes: number;
+  manualPaymentInstructions: string | null;
+  manual: { enabled: boolean };
+  stripe: {
+    enabled: boolean;
+    publishableKey: string;
+    hasSecretKey: boolean;
+    hasWebhookSecret: boolean;
+  };
+  jazzCash: {
+    enabled: boolean;
+    merchantId: string;
+    hasPassword: boolean;
+    hasHashKey: boolean;
+    returnUrl: string | null;
+  };
+  easypaisa: {
+    enabled: boolean;
+    storeId: string;
+    hasHashKey: boolean;
+    hasCredentials: boolean;
+  };
+};
+
+export type UpdatePaymentSettingsRequest = {
+  enrollmentModes: number;
+  manualPaymentInstructions: string | null;
+  manualEnabled: boolean;
+  stripeEnabled: boolean;
+  stripePublishableKey: string;
+  stripeSecretKey: string | null;
+  stripeWebhookSecret: string | null;
+  jazzCashEnabled: boolean;
+  jazzCashMerchantId: string;
+  jazzCashPassword: string | null;
+  jazzCashHashKey: string | null;
+  jazzCashReturnUrl: string | null;
+  easypaisaEnabled: boolean;
+  easypaisaStoreId: string;
+  easypaisaHashKey: string | null;
+  easypaisaCredentials: string | null;
+};
+
+export type EnrollmentSettingsDto = {
+  allowStudentSelfEnroll: boolean;
+};
+
+export type UpdateEnrollmentSettingsRequest = {
+  allowStudentSelfEnroll: boolean;
+};
+
+export const paymentsApi = {
+  availableGateways: (bundleId: string, studentCountry?: string) =>
+    request<AvailableGatewayDto[]>(
+      `/api/v1/payments/available-gateways?bundleId=${bundleId}${
+        studentCountry ? `&studentCountry=${encodeURIComponent(studentCountry)}` : ""
+      }`
+    ),
+  checkout: (b: { bundleId: string; gateway: PaymentGateway; studentCountry?: string }) =>
+    post<CheckoutResponse>("/api/v1/payments/checkout", b),
+  submitManual: (b: {
+    bundleId: string;
+    transactionRef: string;
+    note?: string | null;
+    studentCountry?: string;
+  }) => post<PaymentOrderDto>("/api/v1/payments/manual", b),
+  myOrders: () => request<PaymentOrderDto[]>("/api/v1/me/payments"),
 };
 
 export type LiveClassState = "Upcoming" | "Live" | "Ended" | "Cancelled";
@@ -988,7 +1142,12 @@ export const adminApi = {
     request<PagedResult<StudentListItemDto>>(
       `/api/v1/admin/students${buildQueryString(params)}`
     ),
-  createStudent: (b: { fullName: string; email: string; bundleId: string | null }) =>
+  createStudent: (b: {
+    fullName: string;
+    email: string;
+    bundleId: string | null;
+    country?: string | null;
+  }) =>
     post<CreatedStudentDto>("/api/v1/admin/students", b),
   setStudentStatus: (userId: string, isActive: boolean) =>
     request<StudentListItemDto>(`/api/v1/admin/students/${userId}/status`, {
@@ -1004,6 +1163,7 @@ export const adminApi = {
     b: {
       fullName: string;
       phone: string | null;
+      country: string | null;
       profilePictureUrl: string | null;
       profileNotes: string | null;
     }
@@ -1015,6 +1175,8 @@ export const adminApi = {
   uploadStudentPhoto: (file: File) => uploadBrandingFile(file, "students"),
   listStudentEnrollments: (userId: string) =>
     request<EnrollmentDto[]>(`/api/v1/admin/students/${userId}/enrollments`),
+  enrollStudent: (userId: string, bundleId: string) =>
+    post<EnrollmentDto>(`/api/v1/admin/students/${userId}/enroll`, { bundleId }),
   extendStudentEnrollment: (userId: string, bundleId: string, expiresAt: string) =>
     request<EnrollmentDto>(`/api/v1/admin/students/${userId}/enrollments/${bundleId}`, {
       method: "PUT",
@@ -1057,6 +1219,44 @@ export const adminApi = {
     request<ZoomSettingsDto>("/api/v1/admin/settings/zoom", {
       method: "PUT",
       body: JSON.stringify(b),
+    }),
+
+  getPaymentSettings: () => request<PaymentSettingsDto>("/api/v1/admin/settings/payments"),
+  savePaymentSettings: (b: UpdatePaymentSettingsRequest) =>
+    request<PaymentSettingsDto>("/api/v1/admin/settings/payments", {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+
+  getEnrollmentSettings: () =>
+    request<EnrollmentSettingsDto>("/api/v1/admin/settings/enrollment"),
+  saveEnrollmentSettings: (b: UpdateEnrollmentSettingsRequest) =>
+    request<EnrollmentSettingsDto>("/api/v1/admin/settings/enrollment", {
+      method: "PUT",
+      body: JSON.stringify(b),
+    }),
+
+  listPaymentOrders: (status?: PaymentStatus) =>
+    request<AdminPaymentOrderDto[]>(
+      `/api/v1/admin/payments${status ? `?status=${status}` : ""}`
+    ),
+  pendingPaymentCount: () =>
+    request<{ count: number }>("/api/v1/admin/payments/pending-count"),
+  approvePayment: (id: string) =>
+    post<PaymentOrderDto>(`/api/v1/admin/payments/${id}/approve`, {}),
+  rejectPayment: (id: string, reason?: string) =>
+    post<PaymentOrderDto>(`/api/v1/admin/payments/${id}/reject`, { reason: reason ?? null }),
+  recordManualPayment: (b: {
+    userId: string;
+    bundleId: string;
+    transactionRef: string;
+    note?: string | null;
+  }) =>
+    post<PaymentOrderDto>("/api/v1/admin/payments/record-manual", {
+      userId: b.userId,
+      bundleId: b.bundleId,
+      transactionRef: b.transactionRef,
+      note: b.note ?? null,
     }),
 
   getBranding: () => request<BrandingDto>("/api/v1/admin/settings/branding"),
@@ -1536,6 +1736,7 @@ export type StudentProfileDto = {
   fullName: string;
   email: string;
   phone: string | null;
+  country: string | null;
   profilePictureUrl: string | null;
   profileNotes: string | null;
   isActive: boolean;
@@ -1625,6 +1826,10 @@ export type TenantDetailDto = {
   bundlePriceEditEnabled: boolean;
   mcqBulkImportEnabled: boolean;
   trialEndsAt: string | null;
+  country: string;
+  currency: string;
+  allowedPaymentGateways: number;
+  enrollmentModes: number;
   createdAt: string;
 };
 export type CreatedInstituteAdminDto = {
@@ -1720,6 +1925,10 @@ export const superAdminApi = {
       bundlePriceEditEnabled: boolean;
       mcqBulkImportEnabled: boolean;
       trialEndsAt?: string | null;
+      country?: string;
+      currency?: string;
+      allowedPaymentGateways?: number;
+      enrollmentModes?: number;
     }
   ) =>
     request<TenantDetailDto>(`/api/v1/superadmin/tenants/${id}/flags`, {
@@ -1785,6 +1994,7 @@ export type BrandingDto = {
   syllabusMentorEnabled: boolean;
   bundlePriceEditEnabled: boolean;
   mcqBulkImportEnabled: boolean;
+  allowStudentSelfEnroll: boolean;
 };
 export type UpdateBrandingRequest = {
   displayName: string;

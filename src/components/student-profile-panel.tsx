@@ -5,6 +5,7 @@ import { UserCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useErrorToast } from "@/components/error-toast-provider";
 import { adminApi, API_BASE_URL, type StudentListItemDto } from "@/lib/api";
+import { COUNTRY_OPTIONS } from "@/lib/countries";
 
 function photoSrc(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
@@ -24,6 +25,7 @@ export function StudentProfilePanel({
   const fileRef = useRef<HTMLInputElement>(null);
   const [fullName, setFullName] = useState(student.fullName);
   const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
   const [profileNotes, setProfileNotes] = useState("");
   const [pictureUrl, setPictureUrl] = useState<string | null>(student.profilePictureUrl);
   const [loading, setLoading] = useState(true);
@@ -37,6 +39,7 @@ export function StudentProfilePanel({
       .then((p) => {
         setFullName(p.fullName);
         setPhone(p.phone ?? "");
+        setCountry(p.country ?? "");
         setProfileNotes(p.profileNotes ?? "");
         setPictureUrl(p.profilePictureUrl);
       })
@@ -65,6 +68,7 @@ export function StudentProfilePanel({
       const updated = await adminApi.updateStudentProfile(student.userId, {
         fullName: fullName.trim(),
         phone: phone.trim() || null,
+        country: country || null,
         profilePictureUrl: pictureUrl,
         profileNotes: profileNotes.trim() || null,
       });
@@ -157,6 +161,21 @@ export function StudentProfilePanel({
                 placeholder="Optional"
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Country</label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Not set</option>
+                {COUNTRY_OPTIONS.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">Login email</label>

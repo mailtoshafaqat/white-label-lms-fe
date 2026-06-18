@@ -32,12 +32,13 @@ export function StudentNav({ branding: brandingProp, showAdminLink }: StudentNav
   const panelRef = useRef<HTMLDivElement>(null);
 
   const session = getSession();
+  const sessionUserId = session?.userId;
   const admin = session ? isAdmin(session) : false;
   const superAdmin = session ? isSuperAdmin(session) : false;
 
   useEffect(() => {
-    if (!session) return;
-    setName(session.fullName);
+    if (!sessionUserId) return;
+    setName(session?.fullName ?? "");
     void authApi.me().then((p) => {
       setName(p.fullName);
       setProfilePictureUrl(p.profilePictureUrl);
@@ -46,7 +47,7 @@ export function StudentNav({ branding: brandingProp, showAdminLink }: StudentNav
       loadAndApplyBranding().then(setBranding);
     }
     void refreshNotifications();
-  }, [brandingProp, session]);
+  }, [brandingProp, sessionUserId]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {

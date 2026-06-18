@@ -1,4 +1,4 @@
-import { Mail, Palette, Video, LayoutTemplate } from "lucide-react";
+import { Mail, Palette, Video, LayoutTemplate, CreditCard, UserPlus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type AdminSettingsItem = {
@@ -37,5 +37,19 @@ export const ADMIN_SETTINGS_ITEMS: AdminSettingsItem[] = [
     title: "Zoom integration",
     description: "Connect Zoom or use manual join links for live classes.",
     icon: Video,
+  },
+  {
+    href: "/admin/settings/enrollment",
+    label: "Enrollment",
+    title: "Enrollment",
+    description: "Allow or block student self-signup for your institute.",
+    icon: UserPlus,
+  },
+  {
+    href: "/admin/settings/payments",
+    label: "Payments",
+    title: "Payments",
+    description: "Enrollment modes and gateway credentials for course checkout.",
+    icon: CreditCard,
   },
 ];

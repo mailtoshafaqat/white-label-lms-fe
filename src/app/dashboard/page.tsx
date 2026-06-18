@@ -34,6 +34,7 @@ import {
   coursesApi,
   progressApi,
   enrollmentApi,
+  paymentsApi,
   liveClassesApi,
   type BundleDto,
   type TopicDto,
@@ -142,6 +143,7 @@ export default function DashboardPage() {
   const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
   const [liveClasses, setLiveClasses] = useState<LiveClassDto[]>([]);
   const [enrolling, setEnrolling] = useState<string | null>(null);
+  const [checkoutBundles, setCheckoutBundles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingDto | null>(null);
@@ -186,6 +188,19 @@ export default function DashboardPage() {
         setOverview(dash);
         setEnrollments(e);
         setLiveClasses(lc);
+        const paid = b.filter((x) => x.price > 0);
+        if (paid.length > 0) {
+          Promise.all(
+            paid.map(async (bundle) => {
+              try {
+                const gw = await paymentsApi.availableGateways(bundle.id);
+                return gw.length > 0 ? bundle.id : null;
+              } catch {
+                return null;
+              }
+            })
+          ).then((ids) => setCheckoutBundles(new Set(ids.filter(Boolean) as string[])));
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -769,13 +784,23 @@ export default function DashboardPage() {
                         )}
                         <div className="mt-4">
                           {enrolled || videosOnly ? null : selfEnroll ? (
-                            <Button
-                              size="sm"
-                              onClick={() => enroll(b.id)}
-                              disabled={enrolling === b.id}
-                            >
-                              {enrolling === b.id ? "Enrolling…" : "Enroll"}
-                            </Button>
+                            b.price > 0 && checkoutBundles.has(b.id) ? (
+                              <Button size="sm" asChild>
+                                <Link href={`/checkout/${b.id}`}>Buy now</Link>
+                              </Button>
+                            ) : b.price > 0 ? (
+                              <span className="text-xs text-slate-500">
+                                Contact your institute to purchase
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => enroll(b.id)}
+                                disabled={enrolling === b.id}
+                              >
+                                {enrolling === b.id ? "Enrolling…" : "Enroll"}
+                              </Button>
+                            )
                           ) : (
                             <span className="text-xs text-slate-500">
                               Contact your institute to enroll
