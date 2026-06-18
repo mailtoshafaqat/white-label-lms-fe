@@ -119,13 +119,25 @@ export const instituteChecklistSections: ChecklistSection[] = [
     ],
   },
   {
+    id: "catalog",
+    title: "3. Subject catalog",
+    items: [
+      {
+        id: "subject-catalog",
+        title: "Subject catalog reviewed",
+        description: "Institute-wide subjects (Physics, Chemistry, etc.) before batch/course trees.",
+        href: "/admin/subjects",
+      },
+    ],
+  },
+  {
     id: "content",
-    title: "3. Courses & content",
+    title: "4. Courses & content",
     items: [
       {
         id: "bundle",
         title: "Course bundle created",
-        description: "Add at least one bundle (batch) for enrollments.",
+        description: "Add at least one bundle (batch or course) for enrollments.",
         href: "/admin",
       },
       {
@@ -140,11 +152,17 @@ export const instituteChecklistSections: ChecklistSection[] = [
         description: "Upload video, notes, MCQs, or flashcards on at least one topic.",
         href: "/admin",
       },
+      {
+        id: "topic-quiz",
+        title: "Topic quiz / MCQs added",
+        description: "Daily practice MCQs on at least one topic (manual entry or CSV import).",
+        href: "/admin",
+      },
     ],
   },
   {
     id: "people",
-    title: "4. People & classes",
+    title: "5. People & classes",
     items: [
       {
         id: "teacher",
@@ -181,7 +199,7 @@ export const instituteChecklistSections: ChecklistSection[] = [
   },
   {
     id: "verify",
-    title: "5. Verify student experience",
+    title: "6. Verify student experience",
     items: [
       {
         id: "student-login",
@@ -211,9 +229,11 @@ export type InstituteChecklistAutoState = {
   landingConfigured: boolean;
   smtpConfigured: boolean;
   zoomConfigured: boolean;
+  hasSubjectCatalog: boolean;
   hasBundle: boolean;
   hasCourseTree: boolean;
   hasTopicContent: boolean;
+  hasTopicQuiz: boolean;
   hasTeacher: boolean;
   hasTeacherAssignments: boolean;
   hasStudent: boolean;
@@ -251,12 +271,16 @@ export function isInstituteItemAutoComplete(
       return auto.smtpConfigured;
     case "zoom":
       return auto.zoomConfigured;
+    case "subject-catalog":
+      return auto.hasSubjectCatalog;
     case "bundle":
       return auto.hasBundle;
     case "course-tree":
       return auto.hasCourseTree;
     case "topic-content":
       return auto.hasTopicContent;
+    case "topic-quiz":
+      return auto.hasTopicQuiz;
     case "teacher":
       return auto.hasTeacher;
     case "teacher-subjects":
@@ -298,12 +322,13 @@ export async function fetchSuperAdminChecklistAuto(): Promise<SuperAdminChecklis
 }
 
 export async function fetchInstituteChecklistAuto(): Promise<InstituteChecklistAutoState> {
-  const [branding, landing, email, zoom, bundles, teachers, assignments, students, liveClasses] =
+  const [branding, landing, email, zoom, catalog, bundles, teachers, assignments, students, liveClasses] =
     await Promise.all([
       adminApi.getBranding().catch(() => null),
       adminApi.getLanding().catch(() => null),
       adminApi.getEmailSettings().catch(() => null),
       adminApi.zoomStatus().catch(() => ({ configured: false })),
+      adminApi.listSubjectDefinitions().catch(() => []),
       coursesApi.bundles().catch(() => []),
       adminApi.listTeachers({ page: 1, pageSize: 1 }).catch(() => ({ total: 0, data: [] })),
       adminApi.listSubjectTeachers().catch(() => []),
@@ -313,6 +338,7 @@ export async function fetchInstituteChecklistAuto(): Promise<InstituteChecklistA
 
   let hasTopics = false;
   let hasTopicContent = false;
+  let hasTopicQuiz = false;
 
   const bundleWithSubjects = bundles.find((b) => b.subjectCount > 0) ?? bundles[0];
   if (bundleWithSubjects) {
@@ -327,6 +353,7 @@ export async function fetchInstituteChecklistAuto(): Promise<InstituteChecklistA
         hasTopicContent = topics.some(
           (t) => t.hasVideo || t.mcqCount > 0 || t.flashcardCount > 0
         );
+        hasTopicQuiz = topics.some((t) => t.mcqCount > 0);
       }
     }
   }
@@ -336,9 +363,11 @@ export async function fetchInstituteChecklistAuto(): Promise<InstituteChecklistA
     landingConfigured: (landing?.sections?.length ?? 0) > 0,
     smtpConfigured: Boolean(email?.enabled && email?.smtpHost?.trim()),
     zoomConfigured: zoom.configured,
+    hasSubjectCatalog: catalog.length > 0,
     hasBundle: bundles.length > 0,
     hasCourseTree: bundles.some((b) => b.subjectCount > 0) && hasTopics,
     hasTopicContent,
+    hasTopicQuiz,
     hasTeacher: teachers.total > 0,
     hasTeacherAssignments: assignments.some(
       (a) => a.subjectIds.length > 0 || (a.subjectDefinitionIds?.length ?? 0) > 0

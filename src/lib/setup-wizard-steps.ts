@@ -6,26 +6,22 @@ export type SetupStep = {
   description: string;
   href: string | null;
   linkLabel: string | null;
-  iconName: "Palette" | "Mail" | "Package" | "UserPlus" | "Sparkles" | "ClipboardList";
+  iconName:
+    | "Palette"
+    | "Mail"
+    | "Package"
+    | "UserPlus"
+    | "Sparkles"
+    | "ClipboardList"
+    | "Library"
+    | "FileText"
+    | "HelpCircle";
 };
 
 export function getSetupSteps(session: AuthSession | null): SetupStep[] {
   const profile = parseProductProfile(session?.tenant?.productProfile);
   const bundleWord = profileBundleLabel(session?.tenant);
   const profileLabel = PRODUCT_PROFILE_LABELS[profile];
-
-  const bundleStep: SetupStep = {
-    title: profile === "GeneralLms" ? "First course" : `First ${bundleWord}`,
-    description:
-      profile === "GeneralLms"
-        ? "Create your first course bundle and add subjects, units, and topics."
-        : profile === "Both"
-          ? "Create your first batch or course bundle with subjects, units, and topics."
-          : "Create your first batch (bundle) and add subjects, units, and topics for your session.",
-    href: "/admin",
-    linkLabel: "Go to content admin",
-    iconName: "Package",
-  };
 
   const steps: SetupStep[] = [
     {
@@ -49,7 +45,41 @@ export function getSetupSteps(session: AuthSession | null): SetupStep[] {
       linkLabel: "Open email settings",
       iconName: "Mail",
     },
-    bundleStep,
+    {
+      title: "Subject catalog",
+      description:
+        "Define your institute subject catalog (Physics, Biology, etc.) before building course trees.",
+      href: "/admin/subjects",
+      linkLabel: "Open subject catalog",
+      iconName: "Library",
+    },
+    {
+      title: profile === "GeneralLms" ? "First course" : `First ${bundleWord}`,
+      description:
+        profile === "GeneralLms"
+          ? "Create your first course bundle and add subjects, units, and topics."
+          : profile === "Both"
+            ? "Create your first batch or course bundle with subjects, units, and topics."
+            : `Create your first batch (bundle) and add subjects, units, and topics for your session.`,
+      href: "/admin",
+      linkLabel: "Go to content admin",
+      iconName: "Package",
+    },
+    {
+      title: "Add topic content",
+      description: "Upload video lectures, notes, or other materials on at least one topic.",
+      href: "/admin",
+      linkLabel: "Open content admin",
+      iconName: "FileText",
+    },
+    {
+      title: "Add quiz / MCQs",
+      description:
+        "Add daily practice MCQs on a topic (or import a CSV). Students get notified when a quiz becomes available.",
+      href: "/admin",
+      linkLabel: "Open content admin",
+      iconName: "HelpCircle",
+    },
     {
       title: "First student",
       description: `Provision a student account and enroll them in your ${bundleWord}.`,

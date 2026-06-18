@@ -24,14 +24,13 @@ import {
   ArrowRight,
   Award,
 } from "lucide-react";
-import { BrandHeader } from "@/components/brand-header";
+import { StudentNav } from "@/components/student-nav";
 import { GlobalSearch } from "@/components/global-search";
 import { loadAndApplyBranding, getTenantSlug, mentorLabel, type BrandingDto } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   authApi,
-  API_BASE_URL,
   coursesApi,
   progressApi,
   enrollmentApi,
@@ -131,7 +130,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const authSession = useAuthSession();
   const [name, setName] = useState("");
-  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [admin, setAdmin] = useState(false);
   const [superAdmin, setSuperAdmin] = useState(false);
   const [selfEnroll, setSelfEnroll] = useState(false);
@@ -167,10 +165,7 @@ export default function DashboardPage() {
       return;
     }
     setName(session.fullName);
-    void authApi.me().then((p) => {
-      setName(p.fullName);
-      setProfilePictureUrl(p.profilePictureUrl);
-    });
+    void authApi.me().then((p) => setName(p.fullName));
     setAdmin(isAdmin(session));
     setSuperAdmin(isSuperAdmin(session));
     setSelfEnroll(canSelfEnroll(session));
@@ -254,6 +249,8 @@ export default function DashboardPage() {
         { href: "/certificates", label: "Certificates", icon: Award, show: true },
       ]
     : [
+        { href: "/program", label: "My program", icon: BookOpen, show: true },
+        { href: "/stats", label: "My stats", icon: BarChart3, show: true },
         { href: "/videos", label: "Video library", icon: Video, show: true },
         { href: "/certificates", label: "Certificates", icon: Award, show: true },
         { href: "/bookmarks", label: "Bookmarks", icon: Bookmark, show: true },
@@ -289,45 +286,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100/80 via-white to-slate-50">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <BrandHeader branding={branding} />
-          <div className="flex items-center gap-3 text-sm">
-            {superAdmin && (
-              <Link href="/superadmin" className="font-medium text-slate-800 hover:underline">
-                Platform
-              </Link>
-            )}
-            {admin && !superAdmin && (
-              <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
-                Admin
-              </Link>
-            )}
-            <Link href="/account/password" className="hidden text-slate-500 hover:text-slate-800 sm:inline">
-              Password
-            </Link>
-            <button onClick={logout} className="text-slate-500 hover:text-slate-800">
-              Log out
-            </button>
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[var(--brand)] text-sm font-semibold text-white ring-2 ring-white shadow">
-              {profilePictureUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={
-                    profilePictureUrl.startsWith("http")
-                      ? profilePictureUrl
-                      : `${API_BASE_URL}${profilePictureUrl}`
-                  }
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials(name || "A")
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <StudentNav branding={branding} />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {!videosOnly && (

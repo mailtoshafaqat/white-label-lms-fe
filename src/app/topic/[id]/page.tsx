@@ -3,15 +3,17 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, ClipboardList, Layers, Lock, MessageCircleQuestion } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FileText, ClipboardList, Layers, Lock, MessageCircleQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   contentApi,
+  coursesApi,
   enrollmentApi,
   progressApi,
   type LectureDto,
   type TopicContentDto,
+  type TopicNavigationDto,
 } from "@/lib/api";
 import { ProtectedVideo } from "@/components/protected-video";
 import { authenticatedMediaUrl } from "@/lib/media-url";
@@ -99,6 +101,7 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const router = useRouter();
   const [content, setContent] = useState<TopicContentDto | null>(null);
+  const [navigation, setNavigation] = useState<TopicNavigationDto | null>(null);
   const [branding, setBranding] = useState<BrandingDto | null>(null);
   const [videosOnly, setVideosOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -110,10 +113,15 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
       return;
     }
     loadAndApplyBranding().then(setBranding);
-    Promise.all([contentApi.topicContent(id), enrollmentApi.myEnrollments()])
-      .then(([topicContent, enrollments]) => {
+    Promise.all([
+      contentApi.topicContent(id),
+      enrollmentApi.myEnrollments(),
+      coursesApi.topicNavigation(id).catch(() => null),
+    ])
+      .then(([topicContent, enrollments, nav]) => {
         setContent(topicContent);
         setVideosOnly(isVideosOnlyStudent(enrollments));
+        if (nav) setNavigation(nav);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -170,22 +178,50 @@ export default function TopicPage({ params }: { params: Promise<{ id: string }> 
             )}
 
             {!videosOnly && (
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button asChild>
-                  <Link href={`/quiz/${id}`}>
-                    <ClipboardList className="h-4 w-4" /> Take the Daily Practice Test
-                  </Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href={`/flashcards/${id}`}>
-                    <Layers className="h-4 w-4" /> Review flashcards
-                  </Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href={`/doubts?topicId=${id}`}>
-                    <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
-                  </Link>
-                </Button>
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <Button asChild>
+                    <Link href={`/quiz/${id}`}>
+                      <ClipboardList className="h-4 w-4" /> Take the Daily Practice Test
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href={`/flashcards/${id}`}>
+                      <Layers className="h-4 w-4" /> Review flashcards
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href={`/doubts?topicId=${id}`}>
+                      <MessageCircleQuestion className="h-4 w-4" /> Ask Teacher
+                    </Link>
+                  </Button>
+                </div>
+                {(navigation?.previous || navigation?.next) && (
+                  <div className="flex gap-2">
+                    {navigation.previous ? (
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/topic/${navigation.previous.id}`}>
+                          <ChevronLeft className="h-4 w-4" /> {navigation.previous.title}
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled>
+                        <ChevronLeft className="h-4 w-4" /> Prev
+                      </Button>
+                    )}
+                    {navigation.next ? (
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/topic/${navigation.next.id}`}>
+                          {navigation.next.title} <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled>
+                        Next <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

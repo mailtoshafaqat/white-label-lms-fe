@@ -185,6 +185,14 @@ export const coursesApi = {
   units: (subjectId: string) => request<UnitDto[]>(`/api/v1/subjects/${subjectId}/units`),
   topics: (unitId: string) => request<TopicDto[]>(`/api/v1/units/${unitId}/topics`),
   recentTopics: (take = 3) => request<TopicDto[]>(`/api/v1/topics/recent?take=${take}`),
+  topicNavigation: (topicId: string) =>
+    request<TopicNavigationDto>(`/api/v1/topics/${topicId}/navigation`),
+};
+
+export type TopicNavItemDto = { id: string; title: string };
+export type TopicNavigationDto = {
+  previous: TopicNavItemDto | null;
+  next: TopicNavItemDto | null;
 };
 
 export const API_BASE_URL = BASE_URL;
@@ -423,6 +431,63 @@ export type DashboardOverviewDto = {
   weakestSubject: SubjectAccuracyDto | null;
 };
 
+export type ProgramSubjectDto = {
+  subjectId: string;
+  title: string;
+  topicsCompleted: number;
+  topicsTotal: number;
+  percentComplete: number;
+};
+
+export type ProgramBundleDto = {
+  bundleId: string;
+  title: string;
+  subjects: ProgramSubjectDto[];
+};
+
+export type ContinueTopicDto = {
+  topicId: string;
+  topicTitle: string;
+  subjectTitle: string;
+  bundleTitle: string;
+};
+
+export type StudentProgramDto = {
+  bundles: ProgramBundleDto[];
+  continueTopic: ContinueTopicDto | null;
+};
+
+export type SubjectCompletionDto = {
+  subjectId: string;
+  subjectTitle: string;
+  topicsCompleted: number;
+  topicsTotal: number;
+  percentComplete: number;
+};
+
+export type StudentStatsDto = {
+  overallAccuracy: number;
+  accuracyChangeThisWeek: number;
+  mcqsAttemptedThisMonth: number;
+  practiceStreakDays: number;
+  subjectCompletion: SubjectCompletionDto[];
+  weeklyTrend: WeeklyScoreDto[];
+};
+
+export type NotificationDto = {
+  id: string;
+  title: string;
+  body: string;
+  linkUrl: string | null;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export type NotificationsResponseDto = {
+  unreadCount: number;
+  items: NotificationDto[];
+};
+
 export type LectureProgressDto = {
   lectureId: string;
   topicId: string;
@@ -435,6 +500,13 @@ export const progressApi = {
   myGrades: () => request<GradeDto[]>(`/api/v1/me/grades`),
   leaderboard: (take = 10) => request<LeaderboardRowDto[]>(`/api/v1/leaderboard?take=${take}`),
   dashboard: () => request<DashboardOverviewDto>(`/api/v1/me/dashboard`),
+  program: () => request<StudentProgramDto>(`/api/v1/me/program`),
+  stats: () => request<StudentStatsDto>(`/api/v1/me/stats`),
+  notifications: () => request<NotificationsResponseDto>(`/api/v1/me/notifications`),
+  markNotificationRead: (id: string) =>
+    request<{ read: boolean }>(`/api/v1/me/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    request<{ marked: number }>(`/api/v1/me/notifications/read-all`, { method: "POST" }),
   saveLectureProgress: (
     lectureId: string,
     body: { progressPercent: number; positionSec: number; topicId?: string }

@@ -13,6 +13,9 @@ import {
   Package,
   UserPlus,
   Sparkles,
+  Library,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +35,9 @@ const ICONS = {
   UserPlus,
   Sparkles,
   ClipboardList,
+  Library,
+  FileText,
+  HelpCircle,
 } as const;
 
 function stepIcon(step: SetupStep) {
