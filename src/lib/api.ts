@@ -160,6 +160,7 @@ export type SubjectDto = {
   unitCount: number;
   subjectDefinitionId?: string | null;
   linkedToCatalog?: boolean;
+  sharedUnitLinkCount?: number;
 };
 export type UnitDto = {
   id: string;
@@ -1075,6 +1076,17 @@ export const adminApi = {
     request<UnitDto[]>(`/api/v1/admin/subject-definitions/${definitionId}/library-units`),
   createLibraryUnit: (definitionId: string, b: { title: string; order: number }) =>
     post<UnitDto>(`/api/v1/admin/subject-definitions/${definitionId}/library-units`, b),
+  updateLibraryUnit: (
+    definitionId: string,
+    unitId: string,
+    b: { title: string; order: number }
+  ) =>
+    request<UnitDto>(
+      `/api/v1/admin/subject-definitions/${definitionId}/library-units/${unitId}`,
+      { method: "PUT", body: JSON.stringify(b) }
+    ),
+  deleteLibraryUnit: (definitionId: string, unitId: string) =>
+    del(`/api/v1/admin/subject-definitions/${definitionId}/library-units/${unitId}`),
   myProfile: () => request<AdminProfileDto>("/api/v1/admin/me/profile"),
   storageUsage: () => request<TenantStorageUsageDto>("/api/v1/admin/storage"),
   subjectProgress: (subjectId: string) =>
@@ -1155,6 +1167,12 @@ export type CatalogSubjectGroupDto = {
   batchPlacements: AssignedSubjectDto[];
 };
 
+export type LinkedBatchPlacementDto = {
+  bundleId: string;
+  bundleTitle: string;
+  subjectId: string;
+};
+
 export type SubjectDefinitionDto = {
   id: string;
   code: string;
@@ -1164,6 +1182,7 @@ export type SubjectDefinitionDto = {
   isActive: boolean;
   linkedBatchCount: number;
   libraryUnitCount: number;
+  linkedBatches?: LinkedBatchPlacementDto[];
 };
 
 export type AdminProfileDto = {

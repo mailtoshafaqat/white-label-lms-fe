@@ -59,8 +59,12 @@ export function SubjectCatalogHowItWorks() {
       </p>
       <ul className="list-inside list-disc space-y-1 text-slate-600">
         <li>
-          <strong>Shared library</strong> (optional) — add units here to reuse the same content in
-          {everyBundlePhrase(tenant)} that includes this subject.
+          <strong>Shared library</strong> (optional) — add <em>unit names</em> here to reuse the same content in
+          {everyBundlePhrase(tenant)} that includes this subject. Add <strong>topics, videos, and MCQs</strong> on
+          the Content page under each <strong>SHARED</strong> unit.
+        </li>
+        <li>
+          <strong>Display order</strong> — lower numbers appear first in catalog lists and subject dropdowns.
         </li>
         <li>
           <strong>Archive</strong> — hides a subject from new {bundlesLabel}. Existing placements and

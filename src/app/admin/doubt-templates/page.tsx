@@ -119,6 +119,7 @@ export default function DoubtTemplatesPage() {
                             title: "Delete template?",
                             description: `Remove "${t.title}"? Teachers will no longer see this canned reply.`,
                             confirmLabel: "Delete",
+                            requireTypedConfirm: "delete",
                             onConfirm: async () => {
                               await doubtsApi.deleteTemplate(t.id);
                               await reload();

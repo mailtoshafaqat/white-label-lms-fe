@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Archive, ChevronDown, Pencil, Check, X } from "lucide-react";
+import { Plus, Archive, ChevronDown, Pencil, Check, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminNav } from "@/components/admin-nav";
@@ -26,6 +27,11 @@ function AdminSubjectsContent() {
   const [unitBusy, setUnitBusy] = useState(false);
   const [archiveConfirm, setArchiveConfirm] = useState<SubjectDefinitionDto | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [deleteUnitConfirm, setDeleteUnitConfirm] = useState<{
+    definitionId: string;
+    unit: UnitDto;
+  } | null>(null);
+  const [deleteUnitBusy, setDeleteUnitBusy] = useState(false);
   const tenant = getSession()?.tenant;
   const bundleLabel = profileBundleLabel(tenant);
 
@@ -115,6 +121,33 @@ function AdminSubjectsContent() {
     }
   }
 
+  async function confirmDeleteLibraryUnit() {
+    if (!deleteUnitConfirm) return;
+    setDeleteUnitBusy(true);
+    setError(null);
+    try {
+      await adminApi.deleteLibraryUnit(deleteUnitConfirm.definitionId, deleteUnitConfirm.unit.id);
+      setLibraryUnits((prev) => ({
+        ...prev,
+        [deleteUnitConfirm.definitionId]: (prev[deleteUnitConfirm.definitionId] ?? []).filter(
+          (u) => u.id !== deleteUnitConfirm.unit.id
+        ),
+      }));
+      setItems((prev) =>
+        prev.map((d) =>
+          d.id === deleteUnitConfirm.definitionId
+            ? { ...d, libraryUnitCount: Math.max(0, d.libraryUnitCount - 1) }
+            : d
+        )
+      );
+      setDeleteUnitConfirm(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete shared unit");
+    } finally {
+      setDeleteUnitBusy(false);
+    }
+  }
+
   async function confirmArchive() {
     if (!archiveConfirm) return;
     setArchiveBusy(true);
@@ -150,23 +183,33 @@ function AdminSubjectsContent() {
             <CardTitle className="text-base">Add catalog subject</CardTitle>
           </CardHeader>
           <CardContent>
-            <form className="grid gap-3 sm:grid-cols-3" onSubmit={handleCreate}>
-              <input
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name (e.g. Physics)"
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
-              />
-              <input
-                type="number"
-                min={0}
-                value={sortOrder}
-                onChange={(e) => setSortOrder(Number(e.target.value))}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                title="Sort order"
-              />
-              <Button type="submit" disabled={submitting} className="w-fit sm:col-span-3">
+            <form className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-start" onSubmit={handleCreate}>
+              <div>
+                <label className="block text-xs font-medium text-slate-600">Display name</label>
+                <input
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="e.g. Physics"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label
+                  className="block text-xs font-medium text-slate-600"
+                  title="Lower numbers appear first in lists"
+                >
+                  Display order
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(Number(e.target.value))}
+                  className="mt-1 w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <Button type="submit" disabled={submitting} className="w-fit self-end">
                 <Plus className="h-4 w-4" /> {submitting ? "Adding…" : "Add to catalog"}
               </Button>
             </form>
@@ -194,6 +237,19 @@ function AdminSubjectsContent() {
                 onArchive={() => setArchiveConfirm(item)}
                 onUnitTitleChange={setUnitTitle}
                 onAddUnit={() => void addLibraryUnit(item.id)}
+                onDeleteUnit={(unit) =>
+                  setDeleteUnitConfirm({ definitionId: item.id, unit })
+                }
+                onRenameUnit={async (unitId, title, order) => {
+                  const updated = await adminApi.updateLibraryUnit(item.id, unitId, {
+                    title,
+                    order,
+                  });
+                  setLibraryUnits((prev) => ({
+                    ...prev,
+                    [item.id]: (prev[item.id] ?? []).map((u) => (u.id === unitId ? updated : u)),
+                  }));
+                }}
                 onUpdated={(updated) =>
                   setItems((prev) =>
                     prev
@@ -221,11 +277,29 @@ function AdminSubjectsContent() {
               "You can add a new catalog entry later if you need this subject again."
             : ""
         }
-        confirmLabel="Archive subject"
+        confirmLabel="Archive"
+        requireTypedConfirm="delete"
         loading={archiveBusy}
         onConfirm={() => void confirmArchive()}
         onCancel={() => {
           if (!archiveBusy) setArchiveConfirm(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteUnitConfirm !== null}
+        title="Delete shared unit?"
+        description={
+          deleteUnitConfirm
+            ? `Remove "${deleteUnitConfirm.unit.title}" from the catalog? It will disappear from all batches that link this subject. Delete any topics inside this unit on the Content page first.`
+            : ""
+        }
+        confirmLabel="Delete unit"
+        requireTypedConfirm="delete"
+        loading={deleteUnitBusy}
+        onConfirm={() => void confirmDeleteLibraryUnit()}
+        onCancel={() => {
+          if (!deleteUnitBusy) setDeleteUnitConfirm(null);
         }}
       />
     </div>
@@ -243,6 +317,8 @@ function CatalogRow({
   onArchive,
   onUnitTitleChange,
   onAddUnit,
+  onDeleteUnit,
+  onRenameUnit,
   onUpdated,
 }: {
   item: SubjectDefinitionDto;
@@ -255,15 +331,22 @@ function CatalogRow({
   onArchive: () => void;
   onUnitTitleChange: (v: string) => void;
   onAddUnit: () => void;
+  onDeleteUnit: (unit: UnitDto) => void;
+  onRenameUnit: (unitId: string, title: string, order: number) => Promise<void>;
   onUpdated: (item: SubjectDefinitionDto) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.displayName);
   const [order, setOrder] = useState(item.sortOrder);
   const [busy, setBusy] = useState(false);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  const [unitEditTitle, setUnitEditTitle] = useState("");
+  const [unitRenameBusy, setUnitRenameBusy] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   async function save() {
     setBusy(true);
+    setSaveNote(null);
     try {
       const updated = await adminApi.updateSubjectDefinition(item.id, {
         displayName: name,
@@ -273,6 +356,9 @@ function CatalogRow({
       });
       onUpdated(updated);
       setEditing(false);
+      if (updated.linkedBatchCount > 0) {
+        setSaveNote(`Display name updated in catalog and in ${updated.linkedBatchCount} ${bundleLabel} placement(s).`);
+      }
     } finally {
       setBusy(false);
     }
@@ -333,44 +419,128 @@ function CatalogRow({
       </div>
 
       {editing && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-8 rounded border border-slate-300 px-2 text-sm"
-          />
-          <input
-            type="number"
-            value={order}
-            onChange={(e) => setOrder(Number(e.target.value))}
-            className="h-8 w-20 rounded border border-slate-300 px-2 text-sm"
-          />
-          <Button size="sm" disabled={busy} onClick={() => void save()}>
-            <Check className="h-3.5 w-3.5" /> Save
-          </Button>
-          <button type="button" onClick={() => setEditing(false)} className="text-slate-500">
-            <X className="h-4 w-4" />
-          </button>
+        <div className="flex flex-wrap items-start gap-3 border-t border-slate-100 px-4 py-3">
+          <div className="min-w-[12rem] flex-1">
+            <label className="block text-xs font-medium text-slate-600">Display name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 h-8 w-full rounded border border-slate-300 px-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Display order</label>
+            <input
+              type="number"
+              value={order}
+              onChange={(e) => setOrder(Number(e.target.value))}
+              className="mt-1 h-8 w-20 rounded border border-slate-300 px-2 text-sm"
+            />
+          </div>
+          <div className="flex items-end gap-2 self-end">
+            <Button size="sm" disabled={busy} onClick={() => void save()}>
+              <Check className="h-3.5 w-3.5" /> Save
+            </Button>
+            <button type="button" onClick={() => setEditing(false)} className="text-slate-500">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
+      )}
+      {saveNote && !editing && (
+        <p className="border-t border-slate-100 px-4 py-2 text-xs text-emerald-700">{saveNote}</p>
       )}
 
       {expanded && (
         <CardContent className="border-t border-slate-100 pt-4">
           <p className="text-sm text-slate-600">
             Shared units appear in every {bundleLabel} that links this catalog subject (via &quot;include
-            shared content&quot; on the Content page).
+            shared content&quot; on the{" "}
+            <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
+              Content
+            </Link>{" "}
+            page).
           </p>
-          <ul className="mt-3 space-y-1 text-sm">
+          <p className="mt-2 text-sm text-slate-600">
+            <strong>Topics, videos, and MCQs</strong> are not added here — only unit names. Open{" "}
+            <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
+              Content
+            </Link>
+            , expand a batch → this subject → a <strong>SHARED</strong> unit → add topics.
+          </p>
+          {(item.linkedBatches?.length ?? 0) > 0 && (
+            <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <p className="font-medium text-slate-700">Used in {bundleLabel}s</p>
+              <ul className="mt-1 list-inside list-disc">
+                {item.linkedBatches!.map((b) => (
+                  <li key={b.subjectId}>
+                    {b.bundleTitle}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <ul className="mt-3 space-y-2 text-sm">
             {(units ?? []).length === 0 ? (
               <li className="text-slate-500">No shared units yet.</li>
             ) : (
               units!.map((u) => (
-                <li key={u.id} className="flex items-center gap-2 text-slate-700">
+                <li key={u.id} className="flex flex-wrap items-center gap-2 text-slate-700">
                   <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
                     shared
                   </span>
-                  {u.title}
-                  <span className="text-xs text-slate-400">({u.topicCount} topics)</span>
+                  {editingUnitId === u.id ? (
+                    <>
+                      <input
+                        value={unitEditTitle}
+                        onChange={(e) => setUnitEditTitle(e.target.value)}
+                        className="h-7 min-w-[10rem] flex-1 rounded border border-slate-300 px-2 text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={unitRenameBusy}
+                        onClick={async () => {
+                          setUnitRenameBusy(true);
+                          try {
+                            await onRenameUnit(u.id, unitEditTitle.trim(), u.order);
+                            setEditingUnitId(null);
+                          } finally {
+                            setUnitRenameBusy(false);
+                          }
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <button type="button" onClick={() => setEditingUnitId(null)}>
+                        <X className="h-4 w-4 text-slate-500" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>{u.title}</span>
+                      <span className="text-xs text-slate-400">({u.topicCount} topics)</span>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        title="Rename unit"
+                        onClick={() => {
+                          setEditingUnitId(u.id);
+                          setUnitEditTitle(u.title);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        title="Delete unit"
+                        onClick={() => onDeleteUnit(u)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
                 </li>
               ))
             )}

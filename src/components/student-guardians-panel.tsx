@@ -100,6 +100,7 @@ export function StudentGuardiansPanel({
                           title: "Remove guardian?",
                           description: `Remove ${g.name} (${g.email}) from this student?`,
                           confirmLabel: "Remove",
+                          requireTypedConfirm: "delete",
                           onConfirm: async () => {
                             await adminApi.deleteGuardian(student.userId, g.id);
                             await reload();

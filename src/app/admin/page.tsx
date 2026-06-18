@@ -705,22 +705,36 @@ function UnitNode({
 function SubjectNode({
   subject,
   tenant,
+  catalog,
   onRequestDelete,
   onDeleted,
   canDelete,
   canRenameStructure,
+  onSharedSynced,
 }: {
   subject: SubjectDto;
   tenant?: TenantFeatures | null;
+  catalog: SubjectDefinitionDto[];
   onRequestDelete: (pending: PendingDelete) => void;
   onDeleted: () => void;
   canDelete: boolean;
   canRenameStructure: boolean;
+  onSharedSynced?: () => void;
 }) {
   const bundlePhrase = profileBundleInPhrase(tenant);
+  const catalogDef = subject.subjectDefinitionId
+    ? catalog.find((d) => d.id === subject.subjectDefinitionId)
+    : undefined;
+  const libraryCount = catalogDef?.libraryUnitCount ?? 0;
+  const linkedShared = subject.sharedUnitLinkCount ?? 0;
+  const needsSharedSync =
+    Boolean(subject.linkedToCatalog) && libraryCount > 0 && linkedShared < libraryCount;
+
   const [open, setOpen] = useState(false);
   const [units, setUnits] = useState<UnitDto[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   async function load() {
     setUnits(await coursesApi.units(subject.id));
@@ -729,6 +743,20 @@ function SubjectNode({
   function toggle() {
     setOpen((o) => !o);
     if (!loaded) load();
+  }
+
+  async function syncSharedLibrary() {
+    setSyncBusy(true);
+    setSyncError(null);
+    try {
+      await adminApi.linkSharedUnits(subject.id);
+      await load();
+      onSharedSynced?.();
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : "Could not link shared units");
+    } finally {
+      setSyncBusy(false);
+    }
   }
 
   return (
@@ -757,6 +785,17 @@ function SubjectNode({
         <span className="text-xs text-slate-400" title="Units inside this subject">
           · {childCountLabel(subject.unitCount, "unit")}
         </span>
+        {needsSharedSync && canRenameStructure && (
+          <button
+            type="button"
+            disabled={syncBusy}
+            onClick={() => void syncSharedLibrary()}
+            className="rounded bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+            title="Link all shared library units from the subject catalog"
+          >
+            {syncBusy ? "Linking…" : "Link shared library"}
+          </button>
+        )}
         {canDelete && (
           <button
             type="button"
@@ -780,6 +819,7 @@ function SubjectNode({
           </button>
         )}
       </div>
+      {syncError && <p className="ml-8 text-xs text-red-600">{syncError}</p>}
       {open && (
         <div className="pb-2">
           {units.map((u) => (
@@ -992,10 +1032,12 @@ function BundleNode({
                 key={s.id}
                 subject={s}
                 tenant={tenant}
+                catalog={catalog}
                 canDelete={manageStructure}
                 canRenameStructure={manageStructure}
                 onRequestDelete={onRequestDelete}
                 onDeleted={() => setSubjects((prev) => prev.filter((x) => x.id !== s.id))}
+                onSharedSynced={() => void load()}
               />
             ))
           )}
@@ -1333,6 +1375,7 @@ export default function AdminPage() {
         title={deleteDialog?.title ?? ""}
         description={deleteDialog?.description ?? ""}
         confirmLabel="Delete"
+        requireTypedConfirm="delete"
         loading={deleteBusy}
         onConfirm={() => void confirmDelete()}
         onCancel={() => {

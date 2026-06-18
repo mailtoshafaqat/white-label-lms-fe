@@ -256,6 +256,7 @@ function AdminLiveClassesContent() {
       title: "Cancel live class?",
       description: `Cancel "${title}"? Students will no longer see this class on their dashboard.`,
       confirmLabel: "Cancel class",
+      requireTypedConfirm: "delete",
       onConfirm: async () => {
         await adminApi.cancelLiveClass(id);
         await list.reload();

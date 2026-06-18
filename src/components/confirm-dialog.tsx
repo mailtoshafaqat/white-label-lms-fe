@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 type ConfirmDialogProps = {
@@ -11,6 +11,8 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   loading?: boolean;
   variant?: "dark" | "light";
+  /** When set, user must type this exact text (e.g. "delete") before confirming. */
+  requireTypedConfirm?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -23,12 +25,20 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   loading = false,
   variant = "light",
+  requireTypedConfirm,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const titleId = useId();
   const descId = useId();
+  const inputId = useId();
+  const [typed, setTyped] = useState("");
   const dark = variant === "dark";
+  const typedOk = !requireTypedConfirm || typed === requireTypedConfirm;
+
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +85,25 @@ export function ConfirmDialog({
         <p id={descId} className={descCls}>
           {description}
         </p>
+        {requireTypedConfirm && (
+          <div className="mt-4">
+            <label htmlFor={inputId} className={dark ? "text-xs text-slate-400" : "text-xs text-slate-600"}>
+              Type <span className="font-mono font-semibold">{requireTypedConfirm}</span> to confirm
+            </label>
+            <input
+              id={inputId}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              className={
+                dark
+                  ? "mt-1.5 h-9 w-full rounded-md border border-white/20 bg-slate-800 px-3 text-sm text-white"
+                  : "mt-1.5 h-9 w-full rounded-md border border-slate-300 px-3 text-sm"
+              }
+              placeholder={requireTypedConfirm}
+            />
+          </div>
+        )}
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <Button
             type="button"
@@ -91,8 +120,14 @@ export function ConfirmDialog({
           </Button>
           <Button
             type="button"
-            disabled={loading}
-            className={dark ? "bg-indigo-500 text-white hover:bg-indigo-400" : undefined}
+            disabled={loading || !typedOk}
+            className={
+              requireTypedConfirm
+                ? "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                : dark
+                  ? "bg-indigo-500 text-white hover:bg-indigo-400"
+                  : undefined
+            }
             onClick={onConfirm}
           >
             {loading ? "Please wait…" : confirmLabel}

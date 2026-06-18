@@ -8,6 +8,7 @@ export type ConfirmRequest = {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  requireTypedConfirm?: string;
   onConfirm: () => void | Promise<void>;
 };
 
@@ -41,6 +42,7 @@ export function useConfirmDialog() {
       description={pending?.description ?? ""}
       confirmLabel={pending?.confirmLabel ?? "Confirm"}
       cancelLabel={pending?.cancelLabel}
+      requireTypedConfirm={pending?.requireTypedConfirm}
       loading={loading}
       onConfirm={() => void handleConfirm()}
       onCancel={cancel}

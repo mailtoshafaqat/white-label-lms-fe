@@ -675,6 +675,7 @@ export default function AdminMockExamsPage() {
                               title: "Delete mock exam?",
                               description: `Delete "${exam.title}" and all attempt data? This cannot be undone.`,
                               confirmLabel: "Delete",
+                              requireTypedConfirm: "delete",
                               onConfirm: async () => {
                                 await adminApi.deleteMockExam(exam.id);
                                 setExams(await adminApi.listMockExams(subjectId, showArchived));

@@ -472,6 +472,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       title: "Delete lecture?",
                       description: `Remove "${l.title}"? This cannot be undone.`,
                       confirmLabel: "Delete",
+                      requireTypedConfirm: "delete",
                       onConfirm: async () => {
                         try {
                           await adminApi.deleteLecture(l.id);
@@ -579,6 +580,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                       title: "Delete note?",
                       description: `Remove "${n.title}"? This cannot be undone.`,
                       confirmLabel: "Delete",
+                      requireTypedConfirm: "delete",
                       onConfirm: async () => {
                         try {
                           await adminApi.deleteNote(n.id);
@@ -1255,6 +1257,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                             title: "Delete question?",
                             description: "Remove this MCQ from the quiz? This cannot be undone.",
                             confirmLabel: "Delete",
+                      requireTypedConfirm: "delete",
                             onConfirm: async () => {
                               try {
                                 await adminApi.deleteQuestion(qq.id);
@@ -1482,6 +1485,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                             title: "Delete flashcard?",
                             description: "Remove this flashcard? This cannot be undone.",
                             confirmLabel: "Delete",
+                      requireTypedConfirm: "delete",
                             onConfirm: async () => {
                               try {
                                 await adminApi.deleteCard(c.id);
