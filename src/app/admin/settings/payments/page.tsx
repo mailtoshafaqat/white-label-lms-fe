@@ -22,6 +22,10 @@ function toggleMode(flags: number, bit: number, on: boolean) {
   return on ? flags | bit : flags & ~bit;
 }
 
+function isLocalDevHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
+}
+
 export default function PaymentSettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -36,6 +40,11 @@ export default function PaymentSettingsPage() {
   const [jazzHash, setJazzHash] = useState("");
   const [easypaisaHash, setEasypaisaHash] = useState("");
   const [easypaisaCreds, setEasypaisaCreds] = useState("");
+  const [showDevPaymentHints, setShowDevPaymentHints] = useState(false);
+
+  useEffect(() => {
+    setShowDevPaymentHints(isLocalDevHost(window.location.hostname));
+  }, []);
 
   useEffect(() => {
     const session = getSession();
@@ -173,7 +182,7 @@ export default function PaymentSettingsPage() {
                       })
                     }
                   />
-                  Online checkout (Stripe / JazzCash)
+                  Online checkout (Stripe / JazzCash / Easypaisa)
                 </label>
               </CardContent>
             </Card>
@@ -274,7 +283,9 @@ export default function PaymentSettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">JazzCash (sandbox)</CardTitle>
+                <CardTitle className="text-base">
+                  JazzCash{showDevPaymentHints ? " (sandbox)" : ""}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <label className="flex items-center gap-2 text-sm font-medium">
@@ -344,6 +355,81 @@ export default function PaymentSettingsPage() {
                         jazzCash: { ...form!.jazzCash, returnUrl: e.target.value || null },
                       })
                     }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Easypaisa{showDevPaymentHints ? " (sandbox)" : ""}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {showDevPaymentHints && (
+                  <p className="text-xs text-slate-500">
+                    Local dev only: API uses staging when{" "}
+                    <code className="rounded bg-slate-100 px-1">Payments:EasypaisaSandbox</code> is true. Real wallet
+                    tests need a public HTTPS callback to{" "}
+                    <code className="rounded bg-slate-100 px-1">/api/v1/payments/webhooks/easypaisa</code>.
+                  </p>
+                )}
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={form!.easypaisa.enabled}
+                    onChange={(e) =>
+                      setForm({
+                        ...form!,
+                        easypaisa: { ...form!.easypaisa, enabled: e.target.checked },
+                      })
+                    }
+                  />
+                  Enable Easypaisa
+                </label>
+                <div>
+                  <label className={labelCls}>Store ID</label>
+                  <input
+                    className={field}
+                    value={form!.easypaisa.storeId}
+                    onChange={(e) =>
+                      setForm({
+                        ...form!,
+                        easypaisa: { ...form!.easypaisa, storeId: e.target.value },
+                      })
+                    }
+                    placeholder="From Easypaisa merchant / sandbox onboarding"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>
+                    Hash key{" "}
+                    {form!.easypaisa.hasHashKey && (
+                      <span className="text-xs text-slate-400">(saved)</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    className={field}
+                    value={easypaisaHash}
+                    onChange={(e) => setEasypaisaHash(e.target.value)}
+                    placeholder={form!.easypaisa.hasHashKey ? "Leave blank to keep current" : ""}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>
+                    Additional credentials (optional){" "}
+                    {form!.easypaisa.hasCredentials && (
+                      <span className="text-xs text-slate-400">(saved)</span>
+                    )}
+                  </label>
+                  <input
+                    type="password"
+                    className={field}
+                    value={easypaisaCreds}
+                    onChange={(e) => setEasypaisaCreds(e.target.value)}
+                    placeholder={form!.easypaisa.hasCredentials ? "Leave blank to keep current" : ""}
                   />
                 </div>
               </CardContent>

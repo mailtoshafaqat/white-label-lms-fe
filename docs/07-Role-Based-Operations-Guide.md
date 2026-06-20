@@ -199,7 +199,7 @@ Use when the student should submit payment themselves.
 
 1. Configure gateways at `/admin/settings/payments`
 2. Student logs in → dashboard → **Enroll** or **Checkout** on a paid bundle → `/checkout/{bundleId}`
-3. **Manual:** enter transaction reference + optional note → waits for admin approval at `/admin/payments`
+3. **Manual:** enter transaction reference + optional note → waits for admin approval at `/admin/payments` (institute admins receive email if SMTP is configured)
 4. **Online:** Stripe / JazzCash / Easypaisa → auto-enroll on successful payment
 5. Use **Back to dashboard** on checkout to cancel without paying
 

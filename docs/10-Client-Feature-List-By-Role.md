@@ -104,7 +104,7 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 
 | Feature | Description |
 |---------|-------------|
-| **Admin home** | KPIs (students, teachers, courses/batches, doubts), **storage usage** (plan quota, 80% warning, block at 100%), quick actions, live class snapshot |
+| **Admin home** | KPIs (students, teachers, courses/batches, doubts), **storage** usage widget (plan limits, 80% warning, block at 100%), quick actions, live class snapshot |
 | **Setup wizard** | Guided first-time setup |
 | **Launch checklist** | Step-by-step institute onboarding (browser-saved progress) |
 | **Progress** | Institute-wide student progress by subject — KPIs, 7-day trend, score distribution, leaderboard, per-student drill-down |
@@ -369,7 +369,7 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 | **Course reviews / ratings** | General LMS · optional for Academy | **Medium** | Valuable for self-enroll course catalog and trust; less critical when enrollment is institute-managed. |
 | **Discussions / forums** | General LMS · partial Academy overlap | **Medium** | Academy already has **doubts (Ask Teacher)** per topic. Forums add peer discussion and unit-wide threads — decide if doubts are enough first. |
 | **Proctoring / anti-cheat (mocks)** | ExamPrep / Academy | **Medium** | Important for high-stakes mock exams; complex to build in-house. Consider integrate-first (Proctorio, etc.) before custom. |
-| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Medium** | **Storage quota** shipped (Jun 2026). Broader billing/metering (seats, API, payments) still roadmap. |
+| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Medium** | **Storage quota** shipped (Jun 2026). Per-batch enrollment caps and API metering still roadmap. |
 | **Tenant API keys / webhooks** | Platform + enterprise institutes | **Medium–Low** | Webhooks for enrollments, completions, payments; API keys for CRM/ERP sync. Defer until core LMS gaps above are closed unless a client requires it. |
 | **Certificates Phase B** | Both | **Medium** | Phase A shipped (PDF + QR verify). Phase B: custom fields, batch re-issue, email delivery. |
 
@@ -377,13 +377,14 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 
 - Native mobile apps (iOS / Android)
 - Parent portal (guardian email reports exist; no parent login yet)
-- **Configurable file storage (pending — discuss)** — `appsettings` provider switch for video and PDF/DOC uploads: **Local disk** (current MVP), **Cloudflare R2**, or **Azure Blob**. Today uploads work on local disk only (`IFileStorage` abstraction exists; R2/Azure implementations and `FileStorage` config section not built yet).
 
-### Shipped June 2026 (payments)
+### Shipped June 2026 (payments & platform metering)
 
 - **Student checkout** — Stripe, JazzCash, Easypaisa, manual bank transfer (txn reference only; no screenshot upload)
 - **Admin payment inbox** — approve/reject manual submissions; **record offline payment & enroll** for existing students
-- **Enrollment API enforcement** — topic content, quizzes, lecture/note files gated by active bundle enrollment
+- **Manual payment admin email** — institute admins notified on student manual-payment submit (tenant SMTP required)
+- **Enrollment API enforcement** — topic content, quizzes, lecture/note files, **flashcards** gated by active bundle enrollment
+- **File storage providers** — `FileStorage.Provider`: Local (default), Cloudflare R2, or Azure Blob via `appsettings`
 
 ---
 

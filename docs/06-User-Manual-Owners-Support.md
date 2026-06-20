@@ -174,7 +174,7 @@ Credentials saved to `scripts/e2e-test-credentials.json`.
 | Area | Recommendation |
 |------|----------------|
 | Database | Azure SQL Serverless or managed SQL Server |
-| File storage | Swap `LocalDiskFileStorage` for Blob/R2 via `IFileStorage` |
+| File storage | **`IFileStorage`** — set `FileStorage.Provider` to `Local`, `R2`, or `Azure` in appsettings (see `12-Technical-Handover.md` §8.2) |
 | HTTPS | Terminate TLS at reverse proxy / CDN |
 | Email | Configure real SMTP per tenant (see §6.3) |
 | Secrets | Store Zoom OAuth and SMTP passwords in a secrets manager |

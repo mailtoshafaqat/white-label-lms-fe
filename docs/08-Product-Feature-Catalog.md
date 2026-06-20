@@ -38,7 +38,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 ### Content (video + notes)
 - Video lectures per topic (members-only when configured)
-- **Enrollment-gated access** — students must have active bundle enrollment for topic content, quizzes, and lecture/note file downloads (admins/teachers exempt)
+- **Enrollment-gated access** — students must have active bundle enrollment for topic content, quizzes, flashcards, and lecture/note file downloads (admins/teachers exempt)
 - **Video watch progress** — monotonic 0–100% per lecture; topic complete when all lectures ≥90% **or** quiz submitted
 - Student video library (`/videos`) with progress bars; dashboard bundle completion bars
 - Rich HTML notes + file upload
@@ -58,6 +58,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 ### Flashcards
 - Per-topic flashcard decks
 - Student review UI
+- **Enrollment-gated** — `GET /topics/{topicId}/flashcards` returns **403** for students not enrolled in the topic's bundle (same guard as content/quizzes)
 
 ### Progress & learning tools
 - **My Grades** — quiz history and scores
@@ -94,6 +95,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 ### Enrollment & students
 - Bundle enrollment with expiry
 - Admin create students, reset passwords, activate/block
+- **Seat quota enforcement** — blocks admin create-student and self-register when active student count reaches plan limit (unless SuperAdmin bypass)
 - **Admin enroll existing student** in a bundle (`POST /api/v1/admin/students/{userId}/enroll`)
 - **Extend enrollment** expiry per bundle
 - Self-enroll toggle per tenant
@@ -102,7 +104,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 ### Payments (student checkout)
 - Per-tenant payment settings — Stripe, JazzCash, Easypaisa, manual bank transfer; currency; manual instructions
 - Student checkout (`/checkout/{bundleId}`) with country-aware gateway list
-- **Manual payment** — student submits transaction reference + optional note → admin approve/reject
+- **Manual payment** — student submits transaction reference + optional note → admin approve/reject; **emails all active institute admins** on submit (requires tenant SMTP)
 - **Online payment** — Stripe / JazzCash / Easypaisa webhooks mark paid and enroll
 - **Admin record offline payment** — `POST /api/v1/admin/payments/record-manual` for existing students (paid + enrolled immediately)
 - Redirect URLs use `App:BaseUrl` / `App:ApiBaseUrl` in `appsettings.json` (not hardcoded localhost)
@@ -118,6 +120,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - Setup wizard & checklist
 - Teachers, students, live classes, doubts, mock exams (profile-dependent)
 - **Storage usage widget** on admin home (plan quota, warnings, block at 100%)
+- **Seat usage widget** on admin home (active students vs plan limit; warning at 80%, block new students at 100%)
 - **Certificates** — issued list (`/admin/certificates`), template editor (`/admin/certificates/template`)
 
 ### Branding & landing
@@ -159,6 +162,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | Question bank search | — | — | ✅ | ✅* | — |
 | Certificates (manage / template) | — | — | ✅ | ✅* | — |
 | Storage quota (view / override) | ✅ | — | ✅ | — | — |
+| Seat quota (view / override) | ✅ | — | ✅ | — | — |
 | Video watch progress | — | — | — | — | ✅ |
 | Earn / download certificates | — | — | — | — | ✅ |
 | Dashboard & topics | — | — | — | — | ✅ |
@@ -175,7 +179,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 \* Teacher: only for **assigned subjects**.  
 † Requires **Mistake diary** enabled (ExamPrep / Both).  
-‡ Requires **active enrollment** in the bundle for topic content and quizzes.  
+‡ Requires **active enrollment** in the bundle for topic content, quizzes, and flashcards.  
 § When paid checkout is enabled for the bundle.  
 ¶ Requires tenant flag + enrollment where applicable.
 
@@ -224,6 +228,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | GET | `/api/v1/superadmin/tenants/storage` | All tenants storage summary |
 | PUT | `/api/v1/superadmin/tenants/{id}/storage` | Override quota or bypass |
 | GET | `/api/v1/topics/{topicId}/content` | Topic lectures & notes (enrollment required for students) |
+| GET | `/api/v1/topics/{topicId}/flashcards` | Topic flashcards (enrollment required for students) |
 | GET | `/api/v1/files/{*key}` | Lecture/note download (enrollment required for students) |
 | GET | `/api/v1/topics/{topicId}/quiz` | Topic quiz (enrollment required for students) |
 | GET | `/api/v1/payments/available-gateways` | Gateways for a bundle |
@@ -249,9 +254,10 @@ cd backend/scripts
 .\test-certificate-student1.ps1
 .\test-storage-quota.ps1
 .\test-payments.ps1
+.\test-seat-flashcards-storage.ps1
 ```
 
-Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against the **demo** tenant (`student1@demo.com`).
+Exercises flashcards enrollment gate and Local file upload smoke against the **demo** tenant (`admin@demo.com`, `student1@demo.com`, `?tenant=demo`).
 
 **Client-facing summary:** [10-Client-Feature-List-By-Role.md](./10-Client-Feature-List-By-Role.md)
 
@@ -266,7 +272,7 @@ Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against
 | Course reviews / ratings | GeneralLms (+ optional Academy) | Medium |
 | Discussions / forums | GeneralLms; overlaps with doubts in ExamPrep | Medium |
 | Proctoring / anti-cheat mocks | ExamPrep | Medium |
-| Usage metering / billing (beyond storage quota) | Platform SaaS | Medium |
+| Usage metering / billing (beyond storage quota) | Platform SaaS | Medium — **per-batch enrollment caps** (institute-facing) preferred over tenant-wide student limits |
 | Tenant API keys / webhooks | Platform / enterprise | Medium–Low |
 | Certificates Phase B (custom fields, email delivery) | Both | Medium |
 
@@ -274,11 +280,13 @@ Seeds quiz mistakes, then exercises bookmarks, search, and weakness quiz against
 
 - Mobile apps  
 - Parent portal (guardian email reports exist; no parent login yet)  
-- Flashcards / mentor API enrollment gates (topic content & quizzes gated; flashcards not yet)  
-- **Configurable file storage (pending — discuss)** — `appsettings.json` `FileStorage` section with provider `Local` | `R2` | `Azure` for lecture video and note (PDF/DOC) uploads. MVP uses `LocalDiskFileStorage` only; swap via DI not implemented.
+- Flashcards / mentor API enrollment gates — **flashcards gated** (Jun 2026); mentor was already enrollment-gated  
+- **Configurable file storage** — shipped: `FileStorage.Provider` = `Local` | `R2` | `Azure` in `appsettings.json` (DI swap; no code changes per upload)
 
-### Shipped June 2026 — payments & enrollment enforcement
+### Shipped June 2026 — payments, enrollment, platform metering
 
 - Student checkout (Stripe, JazzCash, Easypaisa, manual txn reference)  
 - Admin payment inbox + record offline payment & enroll  
-- `IEnrollmentAccessGuard` on topic content, quizzes, lecture/note files
+- **Manual payment admin email** — on student submit, emails all active institute admins (requires tenant SMTP)  
+- `IEnrollmentAccessGuard` on topic content, quizzes, lecture/note files, **flashcards**  
+- **File storage providers** — `LocalDiskFileStorage`, `R2FileStorage`, `AzureBlobFileStorage` via `FileStorage.Provider`

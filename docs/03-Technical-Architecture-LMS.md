@@ -65,7 +65,7 @@ Two frontends (both Next.js, same component library):
 
 | Concern | Choice |
 |---------|--------|
-| File storage | **`IFileStorage` abstraction** — local disk (MVP) → Blob/S3/R2 (later) via DI swap |
+| File storage | **`IFileStorage` abstraction** — `Local` (default), **Cloudflare R2**, or **Azure Blob** via `FileStorage.Provider` in appsettings (DI swap; no feature code changes) |
 | Video | Phase 1: tiny pilot on local disk OR Cloudflare R2/Bunny; later R2/CDN + HLS; Phase 2: Zoom live; Phase 3: native stream + DRM |
 | AI (Phase 2) | OpenAI/Azure OpenAI for LLM; **SQL Server 2025 native vectors** for RAG → dedicated vector DB (Azure AI Search / pgvector / Qdrant) only at scale |
 | Hosting | Containers (Docker) on Azure App Service / AKS |
@@ -82,13 +82,15 @@ public interface IFileStorage
     Task<Stream> OpenAsync(string key);
     Task DeleteAsync(string key);
 }
-// Phase 1: LocalDiskFileStorage  (/app/storage/...)
-// Later:   BlobFileStorage / R2FileStorage (swap via DI registration)
+// LocalDiskFileStorage  (Provider = Local, RootPath)
+// R2FileStorage         (Provider = R2)
+// AzureBlobFileStorage  (Provider = Azure)
+// Selected in Lms.Shared/DependencyInjection.cs from appsettings FileStorage section
 ```
 
 | Content | Startup (cheapest) | When it grows |
 |---------|--------------------|---------------|
-| Notes (PDF/HTML), images, thumbnails, docs | **Local disk** ✅ | Blob/R2 via `IFileStorage` swap |
+| Notes (PDF/HTML), images, thumbnails, docs | **Local disk** (dev/single instance) or **R2 / Azure** via `FileStorage.Provider` | CDN for video at scale |
 | Video lectures | Local disk for **tiny pilot only**, else cheap host | **Cloudflare R2** (zero egress) or **Bunny.net Stream** + CDN |
 
 **Why:** storage is cheap; the real cost is **bandwidth/egress**, which dominates for **video**. Serving video from the single app server competes with API traffic and won't scale, so move video to object storage + CDN early. **Cloudflare R2** has **no egress fees** — usually cheaper than Azure Blob for video.

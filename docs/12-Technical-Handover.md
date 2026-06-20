@@ -230,7 +230,7 @@ Frontend gates nav items in `admin-nav-config.ts` and student routes via `studen
 | `IUserDirectory` | Identity | Leaderboard display names |
 | `ISubjectAccessService` | Courses | Teacher subject scoping |
 | `ITenantStorageQuotaService` | Platform | Upload quota checks |
-| `IFileStorage` | Shared (LocalDisk) | All file uploads/downloads |
+| `IFileStorage` | Shared (Local / R2 / Azure) | All file uploads/downloads |
 
 ---
 
@@ -276,7 +276,7 @@ sequenceDiagram
 flowchart LR
     Upload["POST /admin/files"]
     Quota["TenantStorageQuotaService\nAssertCanUploadAsync"]
-    Storage["LocalDiskFileStorage"]
+    Storage["IFileStorage\n(Local | R2 | Azure)"]
     Record["TenantStorageObject row"]
 
     Upload --> Quota
@@ -288,14 +288,38 @@ flowchart LR
 **Key files:**
 
 - `Lms.Shared/Storage/IFileStorage.cs` — abstraction  
-- `LocalDiskFileStorage` — MVP provider (local disk under configured path)  
+- `LocalDiskFileStorage` — default provider (`FileStorage.Provider` = `Local`, path from `RootPath`)  
+- `R2FileStorage` — Cloudflare R2 (S3-compatible API) when `Provider` = `R2`  
+- `AzureBlobFileStorage` — Azure Blob when `Provider` = `Azure`  
 - `TenantStorageQuotaService` — plan limits (MVP 20 GB, Pro 100 GB from `StorageQuota` in appsettings)  
 - `AdminStorageController`, `SuperAdminTenantsController` — usage + override/bypass  
 - Upload filter returns **413** when quota exceeded
 
-**Pitfall:** Files uploaded before metering may not appear in usage until backfilled into `TenantStorageObject`.
+**`appsettings.json` example:**
 
-### 8.3 SuperAdmin tenant provisioning
+```json
+"FileStorage": {
+  "Provider": "Local",
+  "RootPath": "storage",
+  "R2AccountId": "",
+  "R2AccessKeyId": "",
+  "R2SecretAccessKey": "",
+  "R2BucketName": "",
+  "AzureConnectionString": "",
+  "AzureContainerName": "lms"
+}
+```
+
+**Pitfall:** Files uploaded before metering may not appear in usage until backfilled into `TenantStorageObject`. Switching provider does not migrate existing files — plan a one-time copy or re-upload.
+
+### 8.3 Manual payment admin notification
+
+When a student submits manual payment proof (`POST /api/v1/payments/manual`), the API publishes `ManualPaymentSubmittedEvent`. `ManualPaymentSubmittedHandler` (Platform module) emails **all active institute admins** for that tenant with student, bundle, amount, and transaction reference.
+
+- Requires tenant SMTP at `/admin/settings/email` (dev fallback: `backend/dev-emails/*.html`)
+- Key files: `PaymentCheckoutService`, `ManualPaymentSubmittedHandler`, `IInstituteAdminReader`
+
+### 8.4 SuperAdmin tenant provisioning
 
 1. `POST /api/v1/superadmin/tenants` — create tenant row (slug, plan, profile)  
 2. `PUT …/flags` — enable live classes, mentor, self-enroll, etc.  
@@ -429,6 +453,8 @@ Open institute users with **`?tenant=demo`**: http://localhost:3000/login?tenant
 | `test-roadmap-features.ps1` | Video progress, certificates list, MCQ search, cohort analytics, dashboard bundle progress (**11 tests**) |
 | `test-certificate-student1.ps1` | Full certificate flow: complete bundle, PDF download, public verify (**9/9**) |
 | `test-storage-quota.ps1` | Admin storage GET, SuperAdmin override/bypass, 413 on over-quota upload |
+| `test-seat-flashcards-storage.ps1` | Flashcards enrollment gate, Local file upload smoke |
+| `test-payments.ps1` | Manual + online payment flows (checkout, approve, webhooks) |
 | `test-student-learning-features.ps1` | Bookmarks, global search, weakness quiz |
 | `test-product-profiles.ps1` | ExamPrep / GeneralLms / Both flag gating (**22 tests**) |
 | `test-subject-catalog.ps1` | Subject catalog CRUD + shared library |
@@ -464,6 +490,7 @@ Formal QA report: `05-E2E-Test-Report.md`.
 | Login fails for institute user | Missing tenant context | Use `?tenant=demo` or subdomain |
 | `dotnet build` file lock error | API still running | Stop API process before rebuild |
 | Upload returns 413 | Storage quota exceeded | Free space, SuperAdmin override, or bypass |
+| Manual payment: no admin email | SMTP not configured | Configure `/admin/settings/email`; dev fallback writes `backend/dev-emails/*.html` |
 | Storage widget shows 0 | Pre-metering files | Backfill `TenantStorageObject` or re-upload |
 | Certificate not issued | Template disabled | Enable at `/admin/certificates/template` |
 | Certificate not issued | Topics incomplete | All topics need quiz **or** ≥90% video watch |
@@ -480,14 +507,14 @@ Formal QA report: `05-E2E-Test-Report.md`.
 | Area | Status |
 |------|--------|
 | Native mobile apps (iOS / Android) | Not started |
-| In-app payments / student checkout | Not started |
+| In-app payments / student checkout | **Shipped** (Jun 2026) — Stripe, JazzCash, Easypaisa, manual |
 | Parent portal (guardian login) | Email reports only; no login |
 | Certificate Phase B | Phase A shipped (PDF + QR). B = custom fields, email delivery, batch re-issue |
 | Discussions / forums | Not built (doubts cover Ask Teacher) |
 | Proctoring / anti-cheat | Not built |
-| Platform billing (seats, API metering) | Storage quota only; full billing TBD |
+| Platform billing (API metering, per-batch caps) | Storage quota only; per-batch enrollment caps TBD |
 | Tenant API keys / webhooks | Not built |
-| Cloud file storage (R2 / Azure) | `IFileStorage` exists; only `LocalDiskFileStorage` implemented |
+| Cloud file storage (R2 / Azure) | **Shipped** — `FileStorage.Provider` in appsettings (`Local` \| `R2` \| `Azure`) |
 | Full mock exams module | Partial — see `04-Build-Progress-Tracker.md` module 17 |
 
 ---
