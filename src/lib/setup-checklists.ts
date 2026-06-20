@@ -125,7 +125,7 @@ export const instituteChecklistSections: ChecklistSection[] = [
       {
         id: "subject-catalog",
         title: "Subject catalog reviewed",
-        description: "Institute-wide subjects (Physics, Chemistry, etc.) before batch/course trees.",
+        description: "Institute-wide subjects before building course trees.",
         href: "/admin/subjects",
       },
     ],
@@ -137,7 +137,7 @@ export const instituteChecklistSections: ChecklistSection[] = [
       {
         id: "bundle",
         title: "Course bundle created",
-        description: "Add at least one bundle (batch or course) for enrollments.",
+        description: "Add at least one course or batch for enrollments.",
         href: "/admin",
       },
       {

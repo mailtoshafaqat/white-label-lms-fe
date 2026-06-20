@@ -116,7 +116,7 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | Feature | Description |
 |---------|-------------|
 | **Subject catalog** | Master subject list; shared content library; archive subjects |
-| **Content CMS** | Course/batch → subject → unit → topic tree; quick-add topic; search |
+| **Content CMS** | Course/batch → subject → unit → topic tree; **batch settings** (seat cap, enrollment window, start/end dates); quick-add topic; search |
 | **Topic editor** | Video lectures, HTML notes, file uploads, MCQs, flashcards, quiz scheduling |
 | **Unit tests / PYQ** | Unit-level timed tests (exam-prep profile) |
 | **MCQ bulk import** | CSV import when enabled for tenant |
@@ -138,7 +138,7 @@ The single non-blocking failure was an edge case in unit-quiz “not yet enabled
 | **Teachers** | Create accounts; assign catalog subjects or per-course placements; reset password; block/activate |
 | **Students** | Create accounts with optional course enrollment; reset password; block/activate |
 | **Student profile** | Phone, address, date of birth, photo (admin-managed) |
-| **Enrollments** | View enrollments; **enroll existing student** in a new bundle; **extend** course access expiry |
+| **Enrollments** | View enrollments; **enroll existing student** in a new bundle (bypasses batch cap/window); **extend** course access expiry |
 | **Guardians** | Link parent/guardian emails for weekly report emails (when SMTP configured) |
 
 ### Payments (student checkout & admin)
@@ -234,7 +234,7 @@ Same admin URLs as institute admin, but menus and data are **scoped** to assigne
 |---------|-------------|
 | **Student dashboard** | Greeting, KPIs (accuracy, rank, streak, MCQs this month), subject accuracy chart, 7-day trend, leaderboard, live classes, recent topics |
 | **Global search** | Find topics and subjects by keyword |
-| **Course catalog** | Browse published courses/batches; self-enroll when institute allows; **checkout** for paid bundles |
+| **Course catalog** | Browse published courses/batches; enrollment status (Open / Full / Opens on date / Closed); self-enroll when institute allows; **checkout** for paid bundles |
 | **Checkout** | Pay online (Stripe / JazzCash / Easypaisa) or submit manual payment proof (txn reference + note) |
 | **Topic learning** | Watch video, read notes, take topic quiz, flashcards — **requires enrollment** |
 | **Video library** | All lectures with watch progress (`/videos`) |
@@ -369,7 +369,7 @@ Items below are **not in the June 2026 release**. Priority and fit are recommend
 | **Course reviews / ratings** | General LMS · optional for Academy | **Medium** | Valuable for self-enroll course catalog and trust; less critical when enrollment is institute-managed. |
 | **Discussions / forums** | General LMS · partial Academy overlap | **Medium** | Academy already has **doubts (Ask Teacher)** per topic. Forums add peer discussion and unit-wide threads — decide if doubts are enough first. |
 | **Proctoring / anti-cheat (mocks)** | ExamPrep / Academy | **Medium** | Important for high-stakes mock exams; complex to build in-house. Consider integrate-first (Proctorio, etc.) before custom. |
-| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Medium** | **Storage quota** shipped (Jun 2026). Per-batch enrollment caps and API metering still roadmap. |
+| **Usage metering / billing tenants** | Platform (SuperAdmin SaaS) | **Medium** | **Storage quota** shipped (Jun 2026). **Per-batch enrollment caps** shipped (Jun 2026). API metering still roadmap. |
 | **Tenant API keys / webhooks** | Platform + enterprise institutes | **Medium–Low** | Webhooks for enrollments, completions, payments; API keys for CRM/ERP sync. Defer until core LMS gaps above are closed unless a client requires it. |
 | **Certificates Phase B** | Both | **Medium** | Phase A shipped (PDF + QR verify). Phase B: custom fields, batch re-issue, email delivery. |
 

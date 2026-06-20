@@ -153,12 +153,22 @@ export type UserProfileDto = {
   tenantDefaultCountry: string;
 };
 
+export type BundleEnrollmentStatus = "Open" | "Full" | "NotYetOpen" | "Closed" | "Ended";
+
 export type BundleDto = {
   id: string;
   title: string;
   subjectCount: number;
   price: number;
   videosOnly: boolean;
+  validityDays: number;
+  maxEnrollments: number | null;
+  activeEnrollments: number;
+  enrollmentOpensAt: string | null;
+  enrollmentClosesAt: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  enrollmentStatus: BundleEnrollmentStatus;
 };
 export type SubjectDto = {
   id: string;
@@ -916,9 +926,30 @@ function del(path: string) {
 
 export const adminApi = {
   // Course tree
-  createBundle: (b: { title: string; price: number; validityDays: number }) =>
-    post<BundleDto>("/api/v1/admin/bundles", b),
-  updateBundle: (id: string, b: { price: number; validityDays?: number; videosOnly?: boolean }) =>
+  createBundle: (b: {
+    title: string;
+    price: number;
+    validityDays: number;
+    videosOnly?: boolean;
+    maxEnrollments?: number | null;
+    enrollmentOpensAt?: string | null;
+    enrollmentClosesAt?: string | null;
+    startsAt?: string | null;
+    endsAt?: string | null;
+  }) => post<BundleDto>("/api/v1/admin/bundles", b),
+  updateBundle: (
+    id: string,
+    b: {
+      price: number;
+      validityDays?: number;
+      videosOnly?: boolean;
+      maxEnrollments?: number | null;
+      enrollmentOpensAt?: string | null;
+      enrollmentClosesAt?: string | null;
+      startsAt?: string | null;
+      endsAt?: string | null;
+    }
+  ) =>
     request<BundleDto>(`/api/v1/admin/bundles/${id}`, {
       method: "PUT",
       body: JSON.stringify(b),

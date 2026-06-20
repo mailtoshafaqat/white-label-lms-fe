@@ -36,11 +36,12 @@ import {
   type McqImportRowInput,
 } from "@/lib/api";
 import { downloadMcqTemplate, parseMcqCsv, previewMcqRows } from "@/lib/mcq-csv";
-import { getSession, isAdmin, canManageInstitute } from "@/lib/auth";
+import { getSession, isAdmin, canManageInstitute, type TenantFeatures } from "@/lib/auth";
 import {
   profileCohortCompleteThresholdLabel,
   profileCohortLabel,
 } from "@/lib/product-profile";
+import { useAuthSession, useClientMounted } from "@/lib/use-auth-session";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 type QuestionForm = {
@@ -82,8 +83,10 @@ function reorder<T extends { id: string }>(items: T[], id: string, dir: -1 | 1):
 export default function AdminTopicPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: topicId } = use(params);
   const router = useRouter();
-  const tenant = getSession()?.tenant;
-  const cohortLabel = profileCohortLabel(tenant);
+  const mounted = useClientMounted();
+  const authSession = useAuthSession();
+  const tenant = authSession?.tenant ?? null;
+  const cohortLabel = mounted ? profileCohortLabel(tenant) : "cohort";
 
   const [lectures, setLectures] = useState<LectureDto[]>([]);
   const [notes, setNotes] = useState<NoteDto[]>([]);
@@ -694,7 +697,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                   className="ml-auto flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
                   onClick={() => setEditingQuizTitle(true)}
                 >
-                  <span>{quizTitle}</span>
+                  <span>{mounted ? quizTitle || "Quiz" : "Quiz"}</span>
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -1060,7 +1063,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                   </label>
                 </div>
               </div>
-              {notifyBatchComplete && (
+              {notifyBatchComplete && mounted && (
                 <div className="mt-2">
                   <label className="mb-1 block text-xs font-medium text-slate-700">
                     {profileCohortCompleteThresholdLabel(tenant)}
@@ -1097,7 +1100,7 @@ export default function AdminTopicPage({ params }: { params: Promise<{ id: strin
                         : "Publish results"}
                   </Button>
                 )}
-                {resultsPublishedAtUtc && (
+                {mounted && resultsPublishedAtUtc && (
                   <span className="text-xs text-slate-500">
                     Last published {new Date(resultsPublishedAtUtc).toLocaleString()}
                   </span>

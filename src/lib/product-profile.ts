@@ -18,6 +18,10 @@ export function isExamPrepProfile(tenant?: TenantFeatures | null): boolean {
   return p === "ExamPrep" || p === "Both";
 }
 
+export function isGeneralLmsProfile(tenant?: TenantFeatures | null): boolean {
+  return parseProductProfile(tenant?.productProfile) === "GeneralLms";
+}
+
 export function hasMockExams(tenant?: TenantFeatures | null): boolean {
   return tenant?.mockExamsEnabled ?? true;
 }
@@ -60,6 +64,14 @@ export function profileBundleLabelPlural(tenant?: TenantFeatures | null): string
 export function profileBundleLabelTitle(tenant?: TenantFeatures | null): string {
   const label = profileBundleLabel(tenant);
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export function profileBundleSettingsTitle(tenant?: TenantFeatures | null): string {
+  return `${profileBundleLabelTitle(tenant)} settings`;
+}
+
+export function profileBundleEndsLabel(tenant?: TenantFeatures | null): string {
+  return `${profileBundleLabelTitle(tenant)} ends`;
 }
 
 export function profileBundleInPhrase(tenant?: TenantFeatures | null): string {

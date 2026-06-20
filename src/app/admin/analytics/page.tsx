@@ -15,6 +15,7 @@ import {
   type CohortStudentRowDto,
 } from "@/lib/api";
 import { getSession, isAdmin } from "@/lib/auth";
+import { profileBundleLabelTitle } from "@/lib/product-profile";
 
 async function downloadCohortCsv(bundleId: string) {
   const session = getSession();
@@ -39,6 +40,7 @@ async function downloadCohortCsv(bundleId: string) {
 
 export default function AdminAnalyticsPage() {
   const router = useRouter();
+  const bundleLabel = profileBundleLabelTitle(getSession()?.tenant);
   const [bundles, setBundles] = useState<BundleDto[]>([]);
   const [bundleId, setBundleId] = useState("");
   const [overview, setOverview] = useState<CohortAnalyticsOverviewDto | null>(null);
@@ -106,13 +108,13 @@ export default function AdminAnalyticsPage() {
         </div>
 
         <div className="mt-6">
-          <label className="text-sm font-medium text-slate-700">Course / batch</label>
+          <label className="text-sm font-medium text-slate-700">{bundleLabel}</label>
           <select
             value={bundleId}
             onChange={(e) => setBundleId(e.target.value)}
             className="mt-1 h-10 w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 text-sm"
           >
-            <option value="">Select a bundle…</option>
+            <option value="">Select a {bundleLabel.toLowerCase()}…</option>
             {bundles.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.title}

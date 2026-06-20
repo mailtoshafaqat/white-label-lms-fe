@@ -291,7 +291,7 @@ function AdminSubjectsContent() {
         title="Delete shared unit?"
         description={
           deleteUnitConfirm
-            ? `Remove "${deleteUnitConfirm.unit.title}" from the catalog? It will disappear from all batches that link this subject. Delete any topics inside this unit on the Content page first.`
+            ? `Remove "${deleteUnitConfirm.unit.title}" from the catalog? It will disappear from all ${bundleLabel}s that link this subject. Delete any topics inside this unit on the Content page first.`
             : ""
         }
         confirmLabel="Delete unit"
@@ -466,7 +466,7 @@ function CatalogRow({
             <Link href="/admin" className="font-medium text-[var(--brand)] hover:underline">
               Content
             </Link>
-            , expand a batch → this subject → a <strong>SHARED</strong> unit → add topics.
+            , expand a {bundleLabel} → this subject → a <strong>SHARED</strong> unit → add topics.
           </p>
           {(item.linkedBatches?.length ?? 0) > 0 && (
             <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">

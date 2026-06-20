@@ -1,4 +1,4 @@
-import { Mail, Palette, Video, LayoutTemplate, CreditCard, UserPlus } from "lucide-react";
+import { Mail, Palette, Video, LayoutTemplate, CreditCard, UserPlus, CircleHelp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type AdminSettingsItem = {
@@ -10,6 +10,13 @@ export type AdminSettingsItem = {
 };
 
 export const ADMIN_SETTINGS_ITEMS: AdminSettingsItem[] = [
+  {
+    href: "/admin/help",
+    label: "Help & guide",
+    title: "Help & configuration",
+    description: "How courses, enrollment, payments, and content work for your institute.",
+    icon: CircleHelp,
+  },
   {
     href: "/admin/settings/branding",
     label: "Theme & branding",

@@ -36,9 +36,60 @@ import {
   profileBundleLabel,
   profileBundleLabelPlural,
   profileBundleLabelTitle,
+  profileBundleEndsLabel,
+  profileBundleSettingsTitle,
   quickAddTopicExamples,
 } from "@/lib/product-profile";
+import { validateBundleCalendarDates } from "@/lib/bundle-calendar-validation";
 import { useClientMounted } from "@/lib/use-auth-session";
+
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocal(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function batchStatusBadgeClass(status: BundleDto["enrollmentStatus"]): string {
+  switch (status) {
+    case "Open":
+      return "bg-emerald-100 text-emerald-800";
+    case "Full":
+      return "bg-amber-100 text-amber-800";
+    case "NotYetOpen":
+      return "bg-sky-100 text-sky-800";
+    case "Closed":
+    case "Ended":
+      return "bg-slate-200 text-slate-700";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
+}
+
+function batchStatusLabel(status: BundleDto["enrollmentStatus"]): string {
+  switch (status) {
+    case "Open":
+      return "Open";
+    case "Full":
+      return "Full";
+    case "NotYetOpen":
+      return "Not yet open";
+    case "Closed":
+      return "Closed";
+    case "Ended":
+      return "Ended";
+    default:
+      return status;
+  }
+}
 
 type DeleteKind = "bundle" | "subject" | "unit" | "topic";
 
@@ -871,6 +922,8 @@ function BundleNode({
   catalog: SubjectDefinitionDto[];
 }) {
   const bundleLabelTitle = profileBundleLabelTitle(tenant);
+  const bundleSettingsTitle = profileBundleSettingsTitle(tenant);
+  const bundleEndsLabel = profileBundleEndsLabel(tenant);
   const [open, setOpen] = useState(false);
   const [subjects, setSubjects] = useState<SubjectDto[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -879,11 +932,48 @@ function BundleNode({
   const [priceSaving, setPriceSaving] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [videosOnly, setVideosOnly] = useState(bundle.videosOnly);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [maxEnrollments, setMaxEnrollments] = useState(
+    bundle.maxEnrollments != null ? String(bundle.maxEnrollments) : ""
+  );
+  const [enrollmentOpensAt, setEnrollmentOpensAt] = useState(
+    toDatetimeLocal(bundle.enrollmentOpensAt)
+  );
+  const [enrollmentClosesAt, setEnrollmentClosesAt] = useState(
+    toDatetimeLocal(bundle.enrollmentClosesAt)
+  );
+  const [startsAt, setStartsAt] = useState(toDatetimeLocal(bundle.startsAt));
+  const [endsAt, setEndsAt] = useState(toDatetimeLocal(bundle.endsAt));
+
+  const dateWarnings = useMemo(
+    () =>
+      validateBundleCalendarDates({
+        enrollmentOpensAt: fromDatetimeLocal(enrollmentOpensAt),
+        enrollmentClosesAt: fromDatetimeLocal(enrollmentClosesAt),
+        startsAt: fromDatetimeLocal(startsAt),
+        endsAt: fromDatetimeLocal(endsAt),
+      }),
+    [enrollmentOpensAt, enrollmentClosesAt, startsAt, endsAt]
+  );
 
   useEffect(() => {
     setPriceInput(String(bundle.price));
     setVideosOnly(bundle.videosOnly);
-  }, [bundle.price, bundle.videosOnly]);
+    setMaxEnrollments(bundle.maxEnrollments != null ? String(bundle.maxEnrollments) : "");
+    setEnrollmentOpensAt(toDatetimeLocal(bundle.enrollmentOpensAt));
+    setEnrollmentClosesAt(toDatetimeLocal(bundle.enrollmentClosesAt));
+    setStartsAt(toDatetimeLocal(bundle.startsAt));
+    setEndsAt(toDatetimeLocal(bundle.endsAt));
+  }, [
+    bundle.price,
+    bundle.videosOnly,
+    bundle.maxEnrollments,
+    bundle.enrollmentOpensAt,
+    bundle.enrollmentClosesAt,
+    bundle.startsAt,
+    bundle.endsAt,
+  ]);
 
   const q = searchQuery.trim().toLowerCase();
   const titleMatch = !q || bundle.title.toLowerCase().includes(q);
@@ -1001,6 +1091,19 @@ function BundleNode({
         ) : (
           <span className="text-xs text-slate-400">Rs. {bundle.price.toLocaleString()}</span>
         )}
+        {bundle.enrollmentStatus && (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${batchStatusBadgeClass(bundle.enrollmentStatus)}`}
+          >
+            {batchStatusLabel(bundle.enrollmentStatus)}
+          </span>
+        )}
+        {(bundle.maxEnrollments != null || bundle.activeEnrollments > 0) && (
+          <span className="text-[10px] text-slate-500">
+            {bundle.activeEnrollments}
+            {bundle.maxEnrollments != null ? ` / ${bundle.maxEnrollments}` : ""} enrolled
+          </span>
+        )}
         {priceError && <span className="text-xs text-red-600">{priceError}</span>}
         {manageStructure && (
           <button
@@ -1020,6 +1123,110 @@ function BundleNode({
           </button>
         )}
       </div>
+      {open && manageStructure && (
+        <div className="mt-3 ml-7 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+          <p className="font-semibold text-slate-700">{bundleSettingsTitle}</p>
+          <p className="mt-1 text-slate-500">
+            Cap seats and set enrollment / content dates. Admin enroll always bypasses cap and window.{" "}
+            <Link href="/admin/help#batch-settings" className="font-medium text-[var(--brand)] hover:underline">
+              How it works
+            </Link>
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="flex flex-col gap-1 text-slate-600">
+              Max enrollments
+              <input
+                type="number"
+                min={1}
+                placeholder="Unlimited"
+                value={maxEnrollments}
+                onChange={(e) => setMaxEnrollments(e.target.value)}
+                className="h-8 rounded border border-slate-300 bg-white px-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-slate-600">
+              Enrollment opens
+              <input
+                type="datetime-local"
+                value={enrollmentOpensAt}
+                onChange={(e) => setEnrollmentOpensAt(e.target.value)}
+                className="h-8 rounded border border-slate-300 bg-white px-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-slate-600">
+              Enrollment closes
+              <input
+                type="datetime-local"
+                value={enrollmentClosesAt}
+                onChange={(e) => setEnrollmentClosesAt(e.target.value)}
+                className="h-8 rounded border border-slate-300 bg-white px-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-slate-600">
+              Content starts
+              <input
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                className="h-8 rounded border border-slate-300 bg-white px-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-slate-600">
+              {bundleEndsLabel}
+              <input
+                type="datetime-local"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                className="h-8 rounded border border-slate-300 bg-white px-2"
+              />
+            </label>
+          </div>
+          {dateWarnings.length > 0 && (
+            <ul className="mt-3 space-y-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+              {dateWarnings.map((w) => (
+                <li key={w}>• {w}</li>
+              ))}
+            </ul>
+          )}
+          {batchError && <p className="mt-2 text-red-600">{batchError}</p>}
+          <button
+            type="button"
+            disabled={batchSaving}
+            className="mt-3 rounded bg-[var(--brand)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            onClick={async () => {
+              const capRaw = maxEnrollments.trim();
+              let cap: number | null = null;
+              if (capRaw) {
+                cap = Number(capRaw);
+                if (!Number.isFinite(cap) || cap <= 0) {
+                  setBatchError("Enter a valid seat cap or leave blank for unlimited.");
+                  return;
+                }
+              }
+              setBatchSaving(true);
+              setBatchError(null);
+              try {
+                const updated = await adminApi.updateBundle(bundle.id, {
+                  price: bundle.price,
+                  videosOnly: bundle.videosOnly,
+                  maxEnrollments: cap,
+                  enrollmentOpensAt: fromDatetimeLocal(enrollmentOpensAt),
+                  enrollmentClosesAt: fromDatetimeLocal(enrollmentClosesAt),
+                  startsAt: fromDatetimeLocal(startsAt),
+                  endsAt: fromDatetimeLocal(endsAt),
+                });
+                onBundleUpdated(bundle.id, updated);
+              } catch (e) {
+                setBatchError(e instanceof Error ? e.message : `Could not save ${bundleSettingsTitle.toLowerCase()}`);
+              } finally {
+                setBatchSaving(false);
+              }
+            }}
+          >
+            {batchSaving ? "Saving…" : `Save ${bundleSettingsTitle.toLowerCase()}`}
+          </button>
+        </div>
+      )}
       {open && (
         <div className="mt-2">
           {subjects.length === 0 ? (
@@ -1102,17 +1309,9 @@ export default function AdminPage() {
       ? coursesApi.bundles().then(setBundles)
       : adminApi.mySubjects().then((subs) => {
           setAllowedSubjectIds(new Set(subs.map((s) => s.subjectId)));
-          const bundleIds = [...new Set(subs.map((s) => s.bundleId))];
-          return Promise.all(bundleIds.map((id) => coursesApi.bundle(id))).then((details) => {
-            setBundles(
-              details.map((d) => ({
-                id: d.id,
-                title: d.title,
-                subjectCount: d.subjects.length,
-                price: 0,
-                videosOnly: false,
-              }))
-            );
+          const bundleIds = new Set(subs.map((s) => s.bundleId));
+          return coursesApi.bundles().then((all) => {
+            setBundles(all.filter((b) => bundleIds.has(b.id)));
           });
         });
 
@@ -1359,7 +1558,7 @@ export default function AdminPage() {
           {manageStructure && !showSearchResults && (
             <div className="rounded-lg border border-dashed border-slate-300 p-3">
               <InlineAdd
-                label="New bundle title"
+                label={`New ${profileBundleLabel(tenant)} title`}
                 onAdd={async (title) => {
                   const b = await adminApi.createBundle({ title, price: 0, validityDays: 365 });
                   setBundles((prev) => [...prev, b]);

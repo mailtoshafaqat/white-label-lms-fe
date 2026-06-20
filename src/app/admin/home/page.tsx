@@ -19,6 +19,7 @@ import {
   Trophy,
   Calendar,
   ArrowRight,
+  CircleHelp,
   HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -226,6 +227,7 @@ function InstituteAdminHome({ session, name }: { session: AuthSession; name: str
       { href: "/admin", label: "Content", icon: BookOpen },
       { href: "/admin/progress", label: "Progress", icon: BarChart3 },
       { href: "/admin/checklist", label: "Checklist", icon: ListChecks },
+      { href: "/admin/help", label: "Help", icon: CircleHelp },
       { href: "/admin/settings", label: "Settings", icon: Settings },
     ];
     if (hasMockExams(tenant)) items.splice(3, 0, { href: "/admin/mock-exams", label: "Mock exams", icon: Trophy });

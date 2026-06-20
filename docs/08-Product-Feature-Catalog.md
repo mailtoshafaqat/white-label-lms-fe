@@ -94,9 +94,10 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 
 ### Enrollment & students
 - Bundle enrollment with expiry
+- **Per-batch enrollment cap** — optional `maxEnrollments` per bundle (not tenant-wide)
+- **Batch calendar** — enrollment window (`enrollmentOpensAt` / `enrollmentClosesAt`), content start (`startsAt`), batch end (`endsAt`); students see status on dashboard (Open / Full / Not yet open / Closed)
 - Admin create students, reset passwords, activate/block
-- **Seat quota enforcement** — blocks admin create-student and self-register when active student count reaches plan limit (unless SuperAdmin bypass)
-- **Admin enroll existing student** in a bundle (`POST /api/v1/admin/students/{userId}/enroll`)
+- **Admin enroll existing student** in a bundle (`POST /api/v1/admin/students/{userId}/enroll`) — bypasses cap and enrollment window via `ProvisionEnrollAsync`
 - **Extend enrollment** expiry per bundle
 - Self-enroll toggle per tenant
 - Guardian weekly report stub (email when SMTP configured)
@@ -120,7 +121,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 - Setup wizard & checklist
 - Teachers, students, live classes, doubts, mock exams (profile-dependent)
 - **Storage usage widget** on admin home (plan quota, warnings, block at 100%)
-- **Seat usage widget** on admin home (active students vs plan limit; warning at 80%, block new students at 100%)
+- **Batch settings** on content CMS — seat cap, enrollment window, content start/end dates per bundle
 - **Certificates** — issued list (`/admin/certificates`), template editor (`/admin/certificates/template`)
 
 ### Branding & landing
@@ -162,7 +163,7 @@ Customization boundaries: [09-Customization-Policy.md](./09-Customization-Policy
 | Question bank search | — | — | ✅ | ✅* | — |
 | Certificates (manage / template) | — | — | ✅ | ✅* | — |
 | Storage quota (view / override) | ✅ | — | ✅ | — | — |
-| Seat quota (view / override) | ✅ | — | ✅ | — | — |
+| Per-batch enrollment cap & calendar | — | — | ✅ | — | — |
 | Video watch progress | — | — | — | — | ✅ |
 | Earn / download certificates | — | — | — | — | ✅ |
 | Dashboard & topics | — | — | — | — | ✅ |
@@ -272,7 +273,7 @@ Exercises flashcards enrollment gate and Local file upload smoke against the **d
 | Course reviews / ratings | GeneralLms (+ optional Academy) | Medium |
 | Discussions / forums | GeneralLms; overlaps with doubts in ExamPrep | Medium |
 | Proctoring / anti-cheat mocks | ExamPrep | Medium |
-| Usage metering / billing (beyond storage quota) | Platform SaaS | Medium — **per-batch enrollment caps** (institute-facing) preferred over tenant-wide student limits |
+| Usage metering / billing (beyond storage quota) | Platform SaaS | Medium — tenant API metering still roadmap; **per-batch enrollment caps shipped** (Jun 2026) |
 | Tenant API keys / webhooks | Platform / enterprise | Medium–Low |
 | Certificates Phase B (custom fields, email delivery) | Both | Medium |
 
@@ -282,6 +283,13 @@ Exercises flashcards enrollment gate and Local file upload smoke against the **d
 - Parent portal (guardian email reports exist; no parent login yet)  
 - Flashcards / mentor API enrollment gates — **flashcards gated** (Jun 2026); mentor was already enrollment-gated  
 - **Configurable file storage** — shipped: `FileStorage.Provider` = `Local` | `R2` | `Azure` in `appsettings.json` (DI swap; no code changes per upload)
+
+### Shipped June 2026 — KIPS Phase 1 batch engine
+
+- Per-bundle **max enrollments**, enrollment window, content start/end dates on `courses.Bundles`
+- Student catalog exposes `enrollmentStatus`; checkout and self-enroll respect cap/window
+- Admin batch settings in content CMS; admin provision enroll bypasses policy
+- Content access gated by `StartsAt` for students (`IEnrollmentAccessGuard`)
 
 ### Shipped June 2026 — payments, enrollment, platform metering
 

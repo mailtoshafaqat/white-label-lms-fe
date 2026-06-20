@@ -44,13 +44,15 @@ import {
   type DashboardOverviewDto,
 } from "@/lib/api";
 import { canStudentJoinLiveClass, liveClassJoinHint } from "@/lib/live-class-utils";
-import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll } from "@/lib/auth";
+import { getSession, clearSession, isAdmin, isSuperAdmin, canSelfEnroll, type TenantFeatures } from "@/lib/auth";
 import { useAuthSession } from "@/lib/use-auth-session";
 import {
   hasDoubts,
   hasMockExams,
   hasMistakeDiary,
   hasSyllabusMentor,
+  isExamPrepProfile,
+  profileBundleLabelTitle,
 } from "@/lib/product-profile";
 import { isVideosOnlyStudent } from "@/lib/student-access";
 
@@ -94,6 +96,32 @@ function timeGreeting(): string {
 
 function firstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] || fullName;
+}
+
+function bundleEnrollmentOpen(status: BundleDto["enrollmentStatus"]): boolean {
+  return status === "Open";
+}
+
+function bundleEnrollmentHint(b: BundleDto, tenant?: TenantFeatures | null): string {
+  const offering = profileBundleLabelTitle(tenant).toLowerCase();
+  switch (b.enrollmentStatus) {
+    case "Full":
+      return b.maxEnrollments != null
+        ? `${offering.charAt(0).toUpperCase()}${offering.slice(1)} full (${b.activeEnrollments} / ${b.maxEnrollments} seats)`
+        : `${offering.charAt(0).toUpperCase()}${offering.slice(1)} full`;
+    case "NotYetOpen":
+      return b.enrollmentOpensAt
+        ? `Opens ${new Date(b.enrollmentOpensAt).toLocaleString()}`
+        : "Enrollment not open yet";
+    case "Closed":
+      return b.enrollmentClosesAt
+        ? `Closed ${new Date(b.enrollmentClosesAt).toLocaleDateString()}`
+        : "Enrollment closed";
+    case "Ended":
+      return `This ${offering} has ended`;
+    default:
+      return "";
+  }
 }
 
 function StatCard({
@@ -209,6 +237,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const session = getSession();
     if (!session || isSuperAdmin(session) || isAdmin(session)) return;
+    if (!isExamPrepProfile(session.tenant)) return;
 
     setLeaderboardLoading(true);
     progressApi
@@ -257,6 +286,22 @@ export default function DashboardPage() {
     enrollments[0]?.bundleTitle ??
     bundles.find((b) => enrollments.some((e) => e.bundleId === b.id))?.title;
   const weeklyMax = Math.max(...(overview?.weeklyTrend.map((d) => d.accuracy) ?? [0]), 1);
+  const examPrep = isExamPrepProfile(authSession?.tenant);
+  const tenant = authSession?.tenant;
+  const activeEnrollments = enrollments.filter((e) => e.isActive).length;
+  const avgCourseProgress =
+    overview && overview.bundleProgress.length > 0
+      ? Math.round(
+          overview.bundleProgress.reduce((s, p) => s + p.percentComplete, 0) /
+            overview.bundleProgress.length
+        )
+      : 0;
+  const topicsDone =
+    overview?.bundleProgress.reduce((s, p) => s + p.topicsCompleted, 0) ?? 0;
+  const topicsTotal =
+    overview?.bundleProgress.reduce((s, p) => s + p.topicsTotal, 0) ?? 0;
+  const schoolName =
+    branding?.displayName ?? authSession?.tenant?.tenantName ?? "your school";
 
   const quickActions = videosOnly
     ? [
@@ -273,28 +318,28 @@ export default function DashboardPage() {
           href: "/weakness-quiz",
           label: "Weakness quiz",
           icon: Target,
-          show: hasMistakeDiary(authSession?.tenant),
+          show: examPrep && hasMistakeDiary(tenant),
         },
         {
           href: "/mistakes",
           label: "Mistake diary",
           icon: BookX,
-          show: hasMistakeDiary(authSession?.tenant),
+          show: examPrep && hasMistakeDiary(tenant),
         },
         {
           href: "/mentor",
           label: mentorLabel(branding),
           icon: Brain,
-          show: hasSyllabusMentor(authSession?.tenant, branding?.syllabusMentorEnabled),
+          show: hasSyllabusMentor(tenant, branding?.syllabusMentorEnabled),
         },
         {
           href: "/doubts",
           label: "Ask teacher",
           icon: MessageCircleQuestion,
-          show: hasDoubts(authSession?.tenant),
+          show: examPrep && hasDoubts(tenant),
         },
-        { href: "#leaderboard", label: "Leaderboard", icon: Trophy, show: true },
-        ...(hasMockExams(authSession?.tenant)
+        { href: "#leaderboard", label: "Leaderboard", icon: Trophy, show: examPrep },
+        ...(examPrep && hasMockExams(tenant)
           ? [{ href: "/mock-exams", label: "Mock exams", icon: Medal, show: true }]
           : []),
       ].filter((a) => a.show);
@@ -322,7 +367,9 @@ export default function DashboardPage() {
           <div className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-[var(--brand)]/30 blur-2xl" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-white/70">{academyName}</p>
+              <p className="text-sm font-medium text-white/70">
+                {examPrep ? academyName : schoolName}
+              </p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 {timeGreeting()}, {firstName(name || "there")}
               </h1>
@@ -338,19 +385,28 @@ export default function DashboardPage() {
                     "Your video lectures plan is active. Open the video library when content is added."
                   )
                 ) : primaryCourse ? (
-                  <>
-                    You&apos;re enrolled in <strong className="text-white">{primaryCourse}</strong>.
-                    {overview && overview.overallAccuracy > 0
-                      ? " Keep practicing to climb the leaderboard."
-                      : " Take your first quiz to unlock your performance stats."}
-                  </>
+                  examPrep ? (
+                    <>
+                      You&apos;re enrolled in <strong className="text-white">{primaryCourse}</strong>.
+                      {overview && overview.overallAccuracy > 0
+                        ? " Keep practicing to climb the leaderboard."
+                        : " Take your first quiz to unlock your performance stats."}
+                    </>
+                  ) : (
+                    <>
+                      You&apos;re enrolled in <strong className="text-white">{primaryCourse}</strong>.
+                      {avgCourseProgress > 0
+                        ? ` You're ${avgCourseProgress}% through your courses — pick up where you left off.`
+                        : " Open a topic to start learning."}
+                    </>
+                  )
                 ) : (
                   "Explore courses below and start your learning journey."
                 )}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              {overview && overview.practiceStreakDays > 0 && (
+              {examPrep && overview && overview.practiceStreakDays > 0 && (
                 <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">
                   <Flame className="h-5 w-5 text-orange-300" />
                   <div>
@@ -359,7 +415,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
-              {overview?.instituteRank != null && (
+              {examPrep && overview?.instituteRank != null && (
                 <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">
                   <Trophy className="h-5 w-5 text-amber-300" />
                   <div>
@@ -414,7 +470,7 @@ export default function DashboardPage() {
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
             ))
-          ) : (
+          ) : examPrep ? (
             <>
               <StatCard
                 label="Overall accuracy"
@@ -471,6 +527,37 @@ export default function DashboardPage() {
                 accent="bg-gradient-to-br from-rose-500 to-pink-600"
               />
             </>
+          ) : (
+            <>
+              <StatCard
+                label="Course progress"
+                value={overview && overview.bundleProgress.length > 0 ? `${avgCourseProgress}%` : "—"}
+                sub="Average across enrolled courses"
+                icon={BookOpen}
+                accent="bg-gradient-to-br from-blue-500 to-blue-600"
+              />
+              <StatCard
+                label="Topics completed"
+                value={topicsTotal > 0 ? `${topicsDone} / ${topicsTotal}` : "—"}
+                sub="Across your courses"
+                icon={Layers}
+                accent="bg-gradient-to-br from-emerald-500 to-emerald-600"
+              />
+              <StatCard
+                label="Quizzes this month"
+                value={overview ? overview.mcqsAttemptedThisMonth.toLocaleString() : "0"}
+                sub="MCQs attempted"
+                icon={Zap}
+                accent="bg-gradient-to-br from-violet-500 to-violet-600"
+              />
+              <StatCard
+                label="Enrolled courses"
+                value={String(activeEnrollments)}
+                sub={liveClasses.length > 0 ? `${liveClasses.length} upcoming live class(es)` : "Active enrollments"}
+                icon={Calendar}
+                accent="bg-gradient-to-br from-amber-500 to-orange-500"
+              />
+            </>
           )}
         </section>
         )}
@@ -478,7 +565,7 @@ export default function DashboardPage() {
         {/* Analytics row */}
         {!videosOnly && (
         <section className="mt-6 grid gap-6 lg:grid-cols-5">
-          <Card className="border-slate-200/80 shadow-sm lg:col-span-3">
+          <Card className={`border-slate-200/80 shadow-sm ${examPrep ? "lg:col-span-3" : "lg:col-span-5"}`}>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <BarChart3 className="h-4 w-4 text-[var(--brand)]" />
@@ -506,7 +593,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ))}
-                  {overview.weakestSubject && hasMistakeDiary(authSession?.tenant) && (
+                  {overview.weakestSubject && examPrep && hasMistakeDiary(tenant) && (
                     <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200/80 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm text-amber-900">
                         <strong>{overview.weakestSubject.subjectTitle}</strong> is your weakest
@@ -524,6 +611,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          {examPrep && (
           <Card id="leaderboard" className="border-slate-200/80 shadow-sm lg:col-span-2">
             <CardHeader className="space-y-3 pb-2">
               <div className="flex items-center justify-between gap-2">
@@ -604,6 +692,7 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+          )}
         </section>
         )}
 
@@ -767,6 +856,11 @@ export default function DashboardPage() {
                             </div>
                           </div>
                         )}
+                        {enrolled && b.startsAt && new Date(b.startsAt) > new Date() && (
+                          <p className="mt-3 text-xs text-sky-700">
+                            Content available from {new Date(b.startsAt).toLocaleString()}
+                          </p>
+                        )}
                         {enrolled && (
                           <p className="mt-3 text-xs text-slate-500">
                             Expires {new Date(enrolled.expiresAt).toLocaleDateString()}
@@ -784,7 +878,11 @@ export default function DashboardPage() {
                         )}
                         <div className="mt-4">
                           {enrolled || videosOnly ? null : selfEnroll ? (
-                            b.price > 0 && checkoutBundles.has(b.id) ? (
+                            !bundleEnrollmentOpen(b.enrollmentStatus) ? (
+                              <span className="text-xs font-medium text-amber-700">
+                                {bundleEnrollmentHint(b, tenant)}
+                              </span>
+                            ) : b.price > 0 && checkoutBundles.has(b.id) ? (
                               <Button size="sm" asChild>
                                 <Link href={`/checkout/${b.id}`}>Buy now</Link>
                               </Button>
